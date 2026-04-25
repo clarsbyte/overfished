@@ -62,6 +62,49 @@ export function preloadVesselModel(): Promise<THREE.Object3D | null> {
   return gltfLoadPromise;
 }
 
+/**
+ * Lightweight ship for the ambient fleet — small box hull + tiny halo, all
+ * MeshBasicMaterial (no PBR lighting, no GLTF clones). Cuts per-vessel vertex
+ * count from ~150 (ExtrudeGeometry with bevels) to ~24 (BoxGeometry × 2),
+ * and avoids the cost of MeshStandardMaterial across the whole fleet.
+ *
+ * The polished mesh ({@link makeVesselMesh}) is reserved for the demo vessel,
+ * which is the only ship the camera ever zooms close to.
+ */
+export function makeLightweightVesselMesh(color: string): THREE.Group {
+  const group = new THREE.Group();
+
+  const hullColor = new THREE.Color(color).multiplyScalar(0.7).getHex();
+  const hull = new THREE.Mesh(
+    new THREE.BoxGeometry(HULL_LEN, HULL_BEAM, HULL_DEPTH),
+    new THREE.MeshBasicMaterial({ color: hullColor }),
+  );
+  group.add(hull);
+
+  const deck = new THREE.Mesh(
+    new THREE.BoxGeometry(HULL_LEN * 0.55, HULL_BEAM * 0.6, HULL_DEPTH * 0.7),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(color).getHex() }),
+  );
+  deck.position.set(-HULL_LEN * 0.05, 0, HULL_DEPTH * 0.7);
+  group.add(deck);
+
+  // Small halo so the vessel reads against the bright Blue Marble.
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(HULL_LEN * 0.85, HULL_LEN * 1.0, 24),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color(color).getHex(),
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+    }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(0, 0, -HULL_DEPTH * 0.6);
+  group.add(ring);
+
+  return group;
+}
+
 export function makeVesselMesh(color: string, isFlagged = false): THREE.Group {
   const group = new THREE.Group();
 

@@ -1,0 +1,13 @@
+# Optional RAG runtime dependencies.
+#
+# Installed only on hosts that should serve embedding-backed legal retrieval.
+# backend/services/legal_vectorstore.py lazy-imports these inside its
+# embedding helper, so the agent process boots without them — query_faolex_rag
+# returns a graceful "RAG backend not installed" message instead.
+#
+# Install: pip install -r backend/requirements-rag.txt
+
+sentence-transformers>=2.7
+transformers>=4.40
+torch>=2.2
+accelerate>=0.30

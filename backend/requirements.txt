@@ -43,3 +43,8 @@ twilio>=9.0.0
 # AI conversational call (Claude Haiku reading evidence PDFs)
 anthropic>=0.40
 pypdf>=4.0  # PyPDF2 also works as a fallback
+
+# RAG: legal-rule retrieval. Pure-Python; the heavy ML stack
+# (sentence-transformers, transformers, torch) is in requirements-rag.txt
+# and lazy-imported by services/legal_vectorstore.py.
+qdrant-client>=1.9
