@@ -12,6 +12,13 @@ import { DashboardRightPanel } from "./components/DashboardRightPanel";
 import { DashboardBottomBar } from "./components/DashboardBottomBar";
 import { GlobeControlsProvider } from "./components/GlobeControlsContext";
 
+const DEFAULT_LAYERS: LayerState = {
+  showVessels: true,
+  showHeatmap: true,
+  showPaths: true,
+  flightCount: 60,
+};
+
 export default function App() {
   const [introDone, setIntroDone] = useState(false);
   const [selectedVessel, setSelectedVessel] = useState<Vessel | null>(null);

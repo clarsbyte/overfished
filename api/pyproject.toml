@@ -19,7 +19,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "httpx>=0.27.0",
+  "pytest>=8.0.0",
   "ruff>=0.8.0",
+]
+# Install the local package first: `pip install -e ./ml` then `pip install -e "./api[ml]"` for sequence routes.
+ml = [
+  "overfished-ml",
 ]
 
 [tool.hatch.build.targets.wheel]
