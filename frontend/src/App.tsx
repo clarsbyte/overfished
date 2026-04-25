@@ -52,8 +52,9 @@ export default function App() {
     queryClient.invalidateQueries({ queryKey: ["fine"] });
   };
 
-  // Build the port-call arc from the notify-port response.
-  const portCallArcs = (() => {
+  // Build the port-call entry from the notify-port response. Renders as a
+  // surface-hugging dashed line + pulsing rings at the port destination.
+  const portCalls = (() => {
     const r = notifyPortM.data;
     if (!r) return [];
     return [
@@ -77,7 +78,7 @@ export default function App() {
           draw={draw}
           onVesselSelected={setSelectedVessel}
           onRegionSelected={setSelectedRegion}
-          portCallArcs={portCallArcs}
+          portCalls={portCalls}
         />
 
         {/* Top-bar HUD */}

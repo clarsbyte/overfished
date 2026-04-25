@@ -49,13 +49,13 @@ OUT_META = FIXTURES_DIR / "gfw_metadata.json"
 # more representation in the global fleet; safe regions still get a couple
 # so the world doesn't look empty.
 RISK_BUDGET: dict[str, int] = {
-    "confirmed_iuu": 25,
-    "high_risk": 12,
-    "suspect": 6,
-    "safe": 3,
+    "confirmed_iuu": 12,
+    "high_risk": 6,
+    "suspect": 3,
+    "safe": 2,
 }
 
-DEFAULT_TARGET_FLEET_SIZE = 80  # lowered from 120 — fewer regions per run
+DEFAULT_TARGET_FLEET_SIZE = 40  # halved from 80 — perf budget for the globe
 MIN_TRACK_POINTS = 3  # vessels with fewer hourly positions are skipped
 
 # Tokens whose JWT `data.name` field appears in this set are refused — they
