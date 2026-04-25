@@ -40,6 +40,10 @@ gwf_documentation.txt
 /notice_of_violation.html
 /heatmap_inspo.png
 
+# Reference clone of jeantimex/flight-path — used for reverse-engineering
+# the GPU-instanced flight-path visualization. Working-notes only.
+/flight-path-study/
+
 # Claude
 .claude/settings.local.json
 
