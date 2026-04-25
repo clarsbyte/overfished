@@ -1,0 +1,12 @@
+# Databricks Asset Bundle placeholder — replace workspace host and add jobs/notebooks.
+# Validate: `databricks bundle validate` (Databricks CLI v0.200+)
+
+bundle:
+  name: overfished
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://placeholder.cloud.databricks.com
