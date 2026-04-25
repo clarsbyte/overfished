@@ -49,6 +49,7 @@ class Vessel:
     latitude: float
     longitude: float
     distance_miles: float
+    type_code: int | None = None
 
     def as_line(self) -> str:
         bits = [self.name]
@@ -199,6 +200,7 @@ def vessels_within_radius(
                 latitude=obs.latitude,
                 longitude=obs.longitude,
                 distance_miles=dist,
+                type_code=obs.type_code,
             )
         )
     found.sort(key=lambda v: v.distance_miles)

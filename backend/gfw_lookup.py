@@ -27,6 +27,11 @@ EVENT_DATASETS: dict[str, str] = {
 
 DEFAULT_INSIGHT_INCLUDES = ["FISHING", "GAP", "COVERAGE", "VESSEL-IDENTITY-IUU-VESSEL-LIST"]
 
+# GFW selfReportedInfo.shiptypes values that indicate a fishing-capable vessel.
+# Strictly "FISHING"; carriers/bunkers/supports enable IUU but are not themselves
+# fishing vessels per AIS / GFW classification.
+_FISHING_SHIP_TYPES = {"FISHING"}
+
 
 @dataclass
 class VesselRecord:
@@ -117,6 +122,25 @@ def pick_best_vessel(
             )
 
     return max(pool, key=lambda r: (len(r.authorizations), len(r.owners), bool(r.imo)))
+
+
+def is_fishing_vessel(record: VesselRecord) -> bool:
+    """True if a GFW vessel-identity record describes a fishing-capable vessel.
+
+    Two signals from GFW selfReportedInfo:
+      - geartypes is set (PURSE_SEINES, TRAWLERS, POTS_AND_TRAPS, ...) — the
+        vessel carries fishing gear, so it is a fishing vessel by construction.
+      - shiptypes contains "FISHING" (the broad GFW class).
+
+    Carriers, bunkers, support vessels, tankers and cargo ships return False
+    even though they may participate in IUU operations — the IUU classifier
+    pipeline is scoped to *fishing vessels* per the user requirement.
+    """
+    if record.gear_type and str(record.gear_type).strip():
+        return True
+    if record.ship_type and str(record.ship_type).strip().upper() in _FISHING_SHIP_TYPES:
+        return True
+    return False
 
 
 def search_vessel(query: str, limit: int = 10) -> list[VesselRecord]:

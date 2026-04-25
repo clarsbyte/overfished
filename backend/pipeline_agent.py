@@ -37,7 +37,10 @@ from gfw_lookup import (
     extract_mmsi,
     get_events_in_region,
     get_sar_detections_in_region,
+    is_fishing_vessel,
+    pick_best_vessel,
     sar_detection_count,
+    search_vessel,
 )
 from regional_agent import evaluate_point
 from tools.documents import render_combined_legal_pdf
@@ -55,9 +58,32 @@ from tools.schemas import (
 
 VALID_VERDICTS = {"HIGH", "MEDIUM", "LOW", "INSUFFICIENT_DATA"}
 PROSECUTABLE_VERDICTS = {"HIGH", "MEDIUM"}
+
+# AIS shiptype codes: 30 = Fishing. 60-69 passenger, 70-79 cargo, 80-89 tanker.
+# Anything in those non-fishing bands is rejected outright; everything else
+# (including unknown) gets a GFW vessel-identity check.
+_AIS_FISHING_TYPE_CODE = 30
+_AIS_OBVIOUSLY_NON_FISHING = set(range(60, 90))
+
 from vessel_lookup import bbox_for_radius, vessels_within_radius
 
 load_dotenv()
+
+
+def _ais_fishing_tag(type_code: int | None) -> str:
+    """Quick classification from the AIS type code only.
+
+    LIKELY_FISHING — code 30 (the AIS "Fishing" class). Always pass to GFW.
+    NOT_FISHING    — code 60-89 (passenger / cargo / tanker bands). Excluded.
+    UNKNOWN        — no code or any other code. Defer to GFW vessel-identity.
+    """
+    if type_code is None:
+        return "UNKNOWN"
+    if type_code == _AIS_FISHING_TYPE_CODE:
+        return "LIKELY_FISHING"
+    if type_code in _AIS_OBVIOUSLY_NON_FISHING:
+        return "NOT_FISHING"
+    return "UNKNOWN"
 
 
 def _format_ais_vessels(vessels) -> str:
@@ -66,11 +92,51 @@ def _format_ais_vessels(vessels) -> str:
     lines = [f"AIS_STATUS: {len(vessels)} vessel(s) broadcasting AIS, ordered by distance:"]
     for v in vessels:
         mmsi = v.mmsi or "unknown"
+        tag = _ais_fishing_tag(v.type_code)
         lines.append(
             f"MMSI={mmsi} | name={v.name!r} | ship_type={v.type or '?'} | "
-            f"position=({v.latitude:.4f}, {v.longitude:.4f}) | distance={v.distance_miles:.1f} mi"
+            f"ais_class={tag} | position=({v.latitude:.4f}, {v.longitude:.4f}) | "
+            f"distance={v.distance_miles:.1f} mi"
         )
     return "\n".join(lines)
+
+
+def _classify_one_mmsi_fishing(mmsi: str) -> tuple[str, str, str]:
+    """Resolve fishing status of a single MMSI via GFW vessel-identity.
+
+    Returns (mmsi, status, detail) where status is one of:
+      FISHING       — GFW confirms fishing capability (gear_type or ship_type=FISHING).
+      NOT_FISHING   — GFW returns a non-fishing vessel record.
+      UNKNOWN       — no GFW record found, or lookup failed.
+    `detail` is a short human-readable summary for the LLM.
+    """
+    try:
+        records = search_vessel(mmsi, limit=5)
+    except Exception as exc:
+        return mmsi, "UNKNOWN", f"GFW search failed: {exc!s}"
+    if not records:
+        return mmsi, "UNKNOWN", "no GFW vessel-identity record"
+    best = pick_best_vessel(records, query=mmsi) or records[0]
+    if is_fishing_vessel(best):
+        gear = best.gear_type or "?"
+        ship = best.ship_type or "?"
+        return mmsi, "FISHING", f"name={best.name!r} flag={best.flag} gear={gear} ship_type={ship}"
+    ship = best.ship_type or "?"
+    return mmsi, "NOT_FISHING", f"name={best.name!r} flag={best.flag} ship_type={ship}"
+
+
+def _filter_fishing_mmsis(mmsis: list[str], max_workers: int = 15) -> dict[str, tuple[str, str]]:
+    """Resolve a batch of MMSIs in parallel. Returns {mmsi: (status, detail)}."""
+    cleaned = [m for m in (m.strip() for m in mmsis) if m]
+    if not cleaned:
+        return {}
+    out: dict[str, tuple[str, str]] = {}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(cleaned))) as pool:
+        futures = [pool.submit(_classify_one_mmsi_fishing, m) for m in cleaned]
+        for fut in as_completed(futures):
+            mmsi, status, detail = fut.result()
+            out[mmsi] = (status, detail)
+    return out
 
 
 def _format_historical_events(events: list[dict], event_type: str) -> str:
@@ -90,14 +156,14 @@ def _format_historical_events(events: list[dict], event_type: str) -> str:
         seen.items(),
         key=lambda kv: kv[1].get("end") or "",
         reverse=True,
-    )[:6]
+    )[:15]
 
     if not ranked:
         return f"HISTORICAL_EVENTS: {len(events)} {event_type} events but none carry an MMSI."
 
     lines = [
         f"HISTORICAL_EVENTS: {len(events)} {event_type} event(s) from "
-        f"{len(seen)} unique MMSI(s); top 6 most recent:"
+        f"{len(seen)} unique MMSI(s); top 15 most recent:"
     ]
     for mmsi, e in ranked:
         pos = e.get("position") or {}
@@ -180,17 +246,19 @@ def classify_vessel_iuu(mmsi: str, days_back: int = 365) -> str:
 
 @tool
 def classify_vessels_iuu_batch(mmsis: list[str], days_back: int = 365) -> str:
-    """Classify up to 6 MMSIs in parallel via threads. Pass 9-digit MMSIs verbatim
+    """Classify up to 15 MMSIs in parallel via threads. Pass 9-digit MMSIs verbatim
     from check_ais_at_location or find_historical_vessels_in_region.
 
     HARD RULE: never pass vessel names. MMSI only (9-digit) or IMO (7-digit)
     as fallback. GFW search fuzzy-matches names and selects the wrong vessel.
 
-    Total latency ~= slowest single classification (~30-60 s) instead of N x.
-    Capped at 6 MMSIs at the code level. Returns one block per MMSI separated
+    Each per-MMSI classification runs the gfw_agent on Haiku 4.5 (faster +
+    cheaper than Sonnet for the structured insights→verdict task). Total
+    latency ~= slowest single classification (~10-25 s) instead of N x.
+    Capped at 15 MMSIs at the code level. Returns one block per MMSI separated
     by `=== MMSI <m> ===` headers, in the order they were submitted.
     """
-    cleaned = [m.strip() for m in mmsis if m and m.strip()][:6]
+    cleaned = [m.strip() for m in mmsis if m and m.strip()][:15]
     if not cleaned:
         return "No MMSIs supplied — nothing to classify."
 
@@ -207,6 +275,43 @@ def classify_vessels_iuu_batch(mmsis: list[str], days_back: int = 365) -> str:
             mmsi, verdict = fut.result()
             results[mmsi] = verdict
     return "\n\n".join(f"=== MMSI {m} ===\n{results[m]}" for m in cleaned)
+
+
+@tool
+def filter_to_fishing_vessels(mmsis: list[str]) -> str:
+    """Resolve which of the given MMSIs are FISHING vessels per GFW vessel-identity.
+
+    Use this BEFORE classify_vessels_iuu_batch to drop cargo / tankers / passenger
+    ships that AIS broadcast in the same region. Calls GFW vessel-search for each
+    MMSI in parallel (cap 15). A vessel is FISHING if GFW records a gear_type or
+    ship_type=FISHING. NOT_FISHING vessels MUST be excluded from IUU classification
+    — they cannot commit IUU fishing by definition.
+
+    Returns a block per MMSI:
+      MMSI=<m> | status=<FISHING|NOT_FISHING|UNKNOWN> | <detail>
+    Forward only the FISHING MMSIs (and any UNKNOWN you have other reason to
+    suspect, e.g. they appear in find_historical_vessels_in_region FISHING events)
+    into classify_vessels_iuu_batch.
+    """
+    cleaned = [m.strip() for m in mmsis if m and m.strip()][:15]
+    if not cleaned:
+        return "FISHING_FILTER: no MMSIs supplied."
+    resolved = _filter_fishing_mmsis(cleaned)
+    fishing = [m for m in cleaned if resolved.get(m, ("UNKNOWN", ""))[0] == "FISHING"]
+    not_fishing = [m for m in cleaned if resolved.get(m, ("UNKNOWN", ""))[0] == "NOT_FISHING"]
+    unknown = [m for m in cleaned if resolved.get(m, ("UNKNOWN", ""))[0] == "UNKNOWN"]
+    lines = [
+        f"FISHING_FILTER: {len(fishing)} fishing / {len(not_fishing)} non-fishing / "
+        f"{len(unknown)} unknown out of {len(cleaned)} MMSIs.",
+    ]
+    for m in cleaned:
+        status, detail = resolved.get(m, ("UNKNOWN", "no result"))
+        lines.append(f"MMSI={m} | status={status} | {detail}")
+    if fishing:
+        lines.append(f"PASS_TO_CLASSIFIER: {fishing}")
+    else:
+        lines.append("PASS_TO_CLASSIFIER: [] — no fishing vessels confirmed.")
+    return "\n".join(lines)
 
 
 @tool
@@ -531,6 +636,29 @@ def render_evidence_pdf(
             "This is the correct outcome when the case is clean."
         )
 
+    reasoning = (risk_reasoning or "").strip()
+    if len(reasoning) < 80:
+        return (
+            "PDF NOT RENDERED: risk_reasoning is too short to back a prosecution "
+            "(<80 chars). Provide a paragraph that cites the specific GFW indicators, "
+            "AIS-gap timestamps, MPA / RFMO names, or rule breaches that justify the "
+            f"{verdict} verdict, or downgrade the verdict and skip rendering."
+        )
+
+    try:
+        check_status, check_detail = _classify_one_mmsi_fishing(mmsi)
+    except Exception as exc:
+        return (
+            f"PDF NOT RENDERED: pre-render fishing-vessel check failed for MMSI={mmsi} "
+            f"({exc!s}). Refusing to render without a confirmed fishing-vessel identity."
+        )
+    if check_status == "NOT_FISHING":
+        return (
+            f"PDF NOT RENDERED: GFW vessel-identity says MMSI={mmsi} is NOT a fishing "
+            f"vessel ({check_detail}). IUU fishing charges do not apply. The pipeline "
+            "must skip render and report no prosecutable evidence."
+        )
+
     try:
         case = _build_case_file(
             mmsi=mmsi,
@@ -588,49 +716,88 @@ specialist subagents and synthesizing their findings.
 
 PIPELINE — turn 1 has already been prefetched IN PARALLEL by the runtime
 and is provided inline in the human message under
-"TURN-1 DATA (already gathered)". Do NOT re-call check_ais_at_location,
-find_dark_targets_in_region, or lookup_regional_laws — their results are
-above. (They are still registered as tools only as a fallback; assume the
-prefetched data is authoritative.)
+"TURN-1 DATA (already gathered)". The prefetched blocks are:
+  - check_ais_at_location          (live AIS broadcasts)
+  - find_dark_targets_in_region    (SAR satellite radar count)
+  - lookup_regional_laws           (citation-backed legal dossier)
+  - filter_to_fishing_vessels      (GFW vessel-identity for the closest 15 AIS)
+  - find_historical_vessels_in_region [FISHING, last 90 d]   (events fallback)
+Do NOT re-call any of these tools — their results are inline above and are
+authoritative. (They are still registered as tools only as a fallback for
+adversarial cases.)
 
 Compute the dark-target gap from the prefetched turn-1 data:
   - dark_target_count = max(0, SAR_DETECTIONS_count - AIS_STATUS_count)
   - dark_target_count > 0 means satellite radar saw vessels that AIS did not —
     a strong dark-fishing signal that MUST be surfaced in the evidence document.
 
-Turn 1 (your first action) — branch on the prefetched AIS result:
-  CASE A: check_ais_at_location output lists MMSIs.
-    Pick the top 6 closest (already distance-ordered). Call
-    classify_vessels_iuu_batch(mmsis=[<m1>, ..., <m6>]) ONCE with the list.
-    The tool fans them out to threads internally — latency ~= slowest
-    single classification, not 6x. Do NOT emit multiple classify_vessel_iuu
-    tool calls — the batch tool replaces that pattern.
+FISHING-VESSEL GATE (read FISHING_FILTER block in the prefetch first):
+  The pipeline ONLY assesses IUU risk for fishing vessels — cargo, tankers,
+  passenger ships, tugs and pleasure craft cannot commit IUU fishing by
+  definition. The prefetched FISHING_FILTER block lists each closest AIS
+  contact with its gfw_status:
+    - FISHING     → eligible for classify_vessels_iuu_batch
+    - NOT_FISHING → MUST be excluded
+    - UNKNOWN     → exclude unless they appear in find_historical_vessels_in_region
+                    FISHING events (in which case treat as suspicious dark fishing)
+  The PASS_TO_CLASSIFIER list at the bottom of FISHING_FILTER is the ONLY
+  set of MMSIs you may pass to classify_vessels_iuu_batch from AIS data.
+  If PASS_TO_CLASSIFIER is empty AND AIS_STATUS is not silent AND there is
+  no historical-events fallback to run, HALT IMMEDIATELY:
+    - Do NOT call classify_vessels_iuu_batch.
+    - Do NOT call render_evidence_pdf.
+    - Synthesize the evidence document with verdict
+        "NO IUU ASSESSMENT — no fishing vessels detected in the region"
+      and write LEGAL DOCUMENTS: NOT RENDERED (no fishing vessels present).
+
+Turn 1 (your first action) — branch on the prefetched AIS + FISHING_FILTER:
+  CASE A: PASS_TO_CLASSIFIER lists at least one FISHING MMSI.
+    Call classify_vessels_iuu_batch(mmsis=PASS_TO_CLASSIFIER) ONCE (cap 15).
+    The tool fans them out to threads internally on Haiku 4.5 — latency
+    ~= slowest single classification, not Nx. Do NOT emit multiple
+    classify_vessel_iuu tool calls — the batch tool replaces that pattern.
 
   CASE B: AIS_STATUS: silent (zero vessels broadcasting).
-    This is itself a red flag. Call find_historical_vessels_in_region(...).
-    Then call classify_vessels_iuu_batch(mmsis=[<...>]) ONCE with the top 6
-    MMSIs returned. Same threading semantics as CASE A.
+    This is itself a red flag. Use the prefetched
+    `find_historical_vessels_in_region [FISHING, last 90 d]` block above —
+    those MMSIs come from GFW's FISHING events dataset, which is already
+    filtered to fishing-vessel events. Pass up to 15 of those MMSIs straight
+    into classify_vessels_iuu_batch. (You may optionally call
+    filter_to_fishing_vessels first if you want to double-check identity,
+    but it is not required for the FISHING dataset.)
+
+  CASE C: PASS_TO_CLASSIFIER is empty and AIS is NOT silent.
+    HALT per the FISHING-VESSEL GATE above. Do not classify, do not render.
 
 Turn 2 — synthesize the evidence document.
 
 Turn 3 — CONDITIONAL: render a combined legal PDF only if the case is prosecutable.
-  Decision rule (the GATE):
-    Render if ANY of:
-      (a) at least one classify_vessels_iuu_batch verdict is HIGH or MEDIUM, OR
-      (b) AIS_STATUS shows a clear AIS gap inside the protected region AND
-          DARK_TARGET_GAP > 0 from SAR, OR
-      (c) lookup_regional_laws returned a confirmed rule breach (not
-          INSUFFICIENT_DATA) tied to a specific vessel's behaviour.
-    SKIP otherwise. If you skip, write
+  Decision rule (the GATE — be conservative; default is NO RENDER):
+    Render if AND ONLY IF ALL of:
+      (1) at least one classify_vessels_iuu_batch verdict is HIGH (preferred)
+          or MEDIUM with a CITED named indicator (specific MPA event id, RFMO
+          IUU list entry, dated AIS gap inside named protected area);
+      (2) the underlying vessel passed the FISHING-VESSEL GATE
+          (gfw_status=FISHING in FISHING_FILTER, NOT just UNKNOWN);
+      (3) at least one of the following corroborating signals is present:
+            (a) lookup_regional_laws returned a specific rule breach (not
+                INSUFFICIENT_DATA) that matches the vessel's behaviour, OR
+            (b) AIS_STATUS shows a clear AIS gap inside the protected region
+                AND DARK_TARGET_GAP > 0 from SAR, OR
+            (c) the GFW verdict was HIGH (which alone supplies enough).
+    SKIP otherwise. Default to SKIP. If you skip, write
       "LEGAL DOCUMENTS: NOT RENDERED (insufficient evidence — case is clean)"
-    in the synthesis and end the pipeline.
+    in the synthesis and end the pipeline. A skip is the CORRECT outcome
+    on a clean case; do not reach for a HIGH/MEDIUM verdict to justify
+    rendering a PDF.
 
   When you do call render_evidence_pdf, call it ONCE on the highest-risk MMSI:
     - mmsi, latitude, longitude (last known AIS or historical-event position)
     - region_name (from lookup_regional_laws)
     - risk_classification: "HIGH" or "MEDIUM" only
     - risk_score: 0.0–1.0 (your confidence in the verdict)
-    - risk_reasoning: one paragraph summary of why prosecution is warranted
+    - risk_reasoning: one paragraph summary of why prosecution is warranted,
+      citing the SPECIFIC indicators that triggered the gate
     - vessel_name, vessel_flag, vessel_imo, gear_type, length_m, last_seen_iso,
       eez_country: pass whatever you have, None otherwise
     - events_json: optional JSON list of evidentiary events
@@ -638,9 +805,13 @@ Turn 3 — CONDITIONAL: render a combined legal PDF only if the case is prosecut
 
 HARD RULES:
 - Pass MMSIs verbatim to classify_vessels_iuu_batch. Never pass a vessel name.
-- Cap classify_vessels_iuu_batch at 6 MMSIs per pipeline run.
+- Cap classify_vessels_iuu_batch at 15 MMSIs per pipeline run.
+- NEVER classify a NOT_FISHING vessel for IUU risk. They cannot commit IUU
+  fishing. If you find yourself about to do so, stop and exclude.
 - Never invent rules. If lookup_regional_laws returns INSUFFICIENT_DATA, say so.
 - render_evidence_pdf is the LAST tool call. Do not invoke any analysis tool after it.
+- Default to NO RENDER. Rendering a legal PDF is a serious action that names
+  an actual vessel for prosecution; it must be backed by cited indicators.
 
 OUTPUT FORMAT (terse — write only what fits the case, no padding):
 
@@ -684,6 +855,7 @@ def build_supervisor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         check_ais_at_location,
         find_dark_targets_in_region,
         lookup_regional_laws,
+        filter_to_fishing_vessels,
         classify_vessels_iuu_batch,
         find_historical_vessels_in_region,
         render_evidence_pdf,
@@ -709,19 +881,113 @@ def _unwrap_output(out) -> str:
     return str(out)
 
 
+def _candidates_from_vessels(vessels) -> list[tuple[str, str]]:
+    """Filter a list[Vessel] to the closest 15 that aren't obvious non-fishing
+    AIS bands. Returns (mmsi, ais_class) pairs ordered by distance.
+
+    Vessels are already distance-sorted by vessels_within_radius; we just drop
+    entries flagged NOT_FISHING (passenger/cargo/tanker AIS bands) so the
+    downstream GFW filter doesn't waste calls on them.
+    """
+    out: list[tuple[str, str]] = []
+    for v in vessels:
+        if not v.mmsi:
+            continue
+        tag = _ais_fishing_tag(v.type_code)
+        if tag == "NOT_FISHING":
+            continue
+        out.append((v.mmsi, tag))
+        if len(out) >= 15:
+            break
+    return out
+
+
+def _format_prefetched_fishing_filter(
+    candidates: list[tuple[str, str]],
+    resolved: dict[str, tuple[str, str]],
+) -> str:
+    if not candidates:
+        return (
+            "FISHING_FILTER: no AIS candidates to resolve "
+            "(either AIS silent or all contacts were obvious non-fishing types)."
+        )
+    lines = ["FISHING_FILTER (prefetched, GFW vessel-identity):"]
+    fishing: list[str] = []
+    for mmsi, ais_tag in candidates:
+        if mmsi in resolved:
+            status, detail = resolved[mmsi]
+        elif ais_tag == "LIKELY_FISHING":
+            status, detail = "FISHING", "AIS shiptype=30 (Fishing); GFW lookup skipped"
+        else:
+            status, detail = "UNKNOWN", "no GFW result"
+        if status == "FISHING":
+            fishing.append(mmsi)
+        lines.append(f"MMSI={mmsi} | ais={ais_tag} | gfw_status={status} | {detail}")
+    if fishing:
+        lines.append(f"PASS_TO_CLASSIFIER: {fishing}")
+    else:
+        lines.append(
+            "PASS_TO_CLASSIFIER: [] — no fishing vessels confirmed; the pipeline "
+            "must HALT without running classify_vessels_iuu_batch or render_evidence_pdf."
+        )
+    return "\n".join(lines)
+
+
+def _fetch_ais_once(
+    latitude: float, longitude: float, radius_miles: float
+) -> list:
+    """Single-call wrapper around vessels_within_radius — used by the prefetch
+    so we don't open two AIS websockets in parallel for the same bbox.
+    Returns [] on any error; the caller formats / extracts candidates.
+    """
+    try:
+        return vessels_within_radius(latitude, longitude, radius_miles)
+    except Exception:
+        return []
+
+
+def _fetch_historical_fishing(
+    latitude: float, longitude: float, radius_miles: float, days_back: int = 90
+) -> str:
+    """Prefetch the FISHING-events historical fallback so the supervisor has
+    it available without paying a serial round-trip when AIS turns out silent.
+    The FISHING dataset already restricts to fishing-vessel events on GFW's
+    side, so this list is pre-filtered to fishing-capable MMSIs.
+    """
+    end_d = date.today()
+    start_d = end_d - timedelta(days=days_back)
+    bbox = bbox_for_radius(latitude, longitude, radius_miles)
+    try:
+        events = get_events_in_region(
+            bbox,
+            event_type="FISHING",
+            start_date=start_d.isoformat(),
+            end_date=end_d.isoformat(),
+        )
+    except Exception as exc:
+        return f"HISTORICAL_FISHING prefetch failed: {exc!s}"
+    return _format_historical_events(events, "FISHING")
+
+
 def _prefetch_turn1(
     latitude: float,
     longitude: float,
     radius_miles: float,
     port_country_code: str | None,
 ) -> dict[str, str]:
-    """Run the three independent turn-1 fetches concurrently.
+    """Run the independent turn-1 fetches concurrently.
 
-    LangChain's AgentExecutor runs tool calls serially even when the model
-    emits them in a single parallel response, so the supervisor would pay
-    ~30s (AIS) + ~5s (SAR) + ~30s (legal LLM) sequentially. AIS, SAR, and
-    legal-dossier hit completely independent backends — fan them out to a
-    ThreadPoolExecutor so wall time is max() instead of sum().
+    Parallel batch (single ThreadPoolExecutor):
+      - AIS (one websocket, ~30s)
+      - SAR 4Wings (~5s)
+      - Regional-law LLM (~30s)
+      - GFW Events FISHING fallback (~3-5s) — always prefetched so the
+        AIS-silent branch doesn't pay a serial round-trip later.
+
+    Once AIS resolves we derive the closest-15 fishing candidates from the
+    same vessel list (no second AIS call) and resolve their fishing status
+    in parallel via _filter_fishing_mmsis. SAR + law + historical may still
+    be in flight while we do that — net wall time is max(AIS+filter, law).
     """
     def _safe(fut, label: str) -> str:
         try:
@@ -729,11 +995,8 @@ def _prefetch_turn1(
         except Exception as exc:
             return f"({label} prefetch failed: {exc!s})"
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        ais_fut = pool.submit(
-            check_ais_at_location.invoke,
-            {"latitude": latitude, "longitude": longitude, "radius_miles": radius_miles},
-        )
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        ais_fut = pool.submit(_fetch_ais_once, latitude, longitude, radius_miles)
         sar_fut = pool.submit(
             find_dark_targets_in_region.invoke,
             {"latitude": latitude, "longitude": longitude, "radius_miles": radius_miles},
@@ -746,10 +1009,34 @@ def _prefetch_turn1(
                 "port_country_code": port_country_code,
             },
         )
+        hist_fut = pool.submit(
+            _fetch_historical_fishing, latitude, longitude, radius_miles
+        )
+
+        try:
+            ais_vessels = ais_fut.result()
+        except Exception:
+            ais_vessels = []
+        ais_str = _format_ais_vessels(ais_vessels)
+        candidates = _candidates_from_vessels(ais_vessels)
+
+        if candidates:
+            mmsis_to_resolve = [m for m, tag in candidates if tag != "LIKELY_FISHING"]
+            try:
+                resolved = (
+                    _filter_fishing_mmsis(mmsis_to_resolve) if mmsis_to_resolve else {}
+                )
+            except Exception:
+                resolved = {}
+        else:
+            resolved = {}
+
         return {
-            "ais": _safe(ais_fut, "check_ais_at_location"),
+            "ais": ais_str,
             "sar": _safe(sar_fut, "find_dark_targets_in_region"),
             "law": _safe(law_fut, "lookup_regional_laws"),
+            "fishing_filter": _format_prefetched_fishing_filter(candidates, resolved),
+            "historical_fishing": _safe(hist_fut, "find_historical_vessels_in_region"),
         }
 
 
@@ -780,15 +1067,80 @@ def evaluate_incident(
         f"--- check_ais_at_location ---\n{prefetch['ais']}\n\n"
         f"--- find_dark_targets_in_region ---\n{prefetch['sar']}\n\n"
         f"--- lookup_regional_laws ---\n{prefetch['law']}\n\n"
-        "Now: classify_vessels_iuu_batch on the top 6 MMSIs (or call "
-        "find_historical_vessels_in_region first if AIS is silent), "
-        "synthesize the evidence document, and call render_evidence_pdf "
-        "if the gate criteria are met."
+        f"--- filter_to_fishing_vessels (prefetched) ---\n{prefetch['fishing_filter']}\n\n"
+        f"--- find_historical_vessels_in_region [FISHING, last 90 d] (prefetched) ---\n"
+        f"{prefetch['historical_fishing']}\n\n"
+        "Now apply the FISHING-VESSEL GATE on the FISHING_FILTER block. If "
+        "PASS_TO_CLASSIFIER is non-empty, call classify_vessels_iuu_batch on "
+        "exactly that list. If it is empty and AIS is silent (zero broadcasts), "
+        "use the prefetched HISTORICAL_EVENTS FISHING list above as the candidate "
+        "MMSI source — those are pre-filtered to fishing-vessel events by GFW's "
+        "FISHING dataset, so you can pass them straight into "
+        "classify_vessels_iuu_batch (still cap 15). Do NOT re-call "
+        "find_historical_vessels_in_region for FISHING — its result is above. "
+        "If the FISHING_FILTER PASS_TO_CLASSIFIER is empty AND AIS is not silent, "
+        "HALT — do not classify, do not render. Then synthesize the evidence "
+        "document, and call render_evidence_pdf only if the strict gate criteria "
+        "in the system prompt are ALL met."
     )
     executor = build_supervisor()
     result = executor.invoke({"input": question})
     raw = result["output"] if isinstance(result, dict) else result
     return _unwrap_output(raw)
+
+
+_PDF_PATH_RE = re.compile(r"path:\s*(.+\.pdf)\s*$", re.MULTILINE | re.IGNORECASE)
+_CASE_ID_RE = re.compile(r"case_id=([A-Za-z0-9_\-]+)")
+
+
+def _parse_pipeline_artifacts(summary: str) -> dict:
+    """Extract risk flag + PDF metadata from a supervisor synthesis.
+
+    risk=True iff render_evidence_pdf actually produced a PDF (the renderer's
+    success line is "EVIDENCE_PDF_RENDERED: ..."). All other outcomes — clean
+    case, NO IUU ASSESSMENT, NOT RENDERED — are risk=False. Refusing to render
+    on bad inputs (verdict LOW, short reasoning, NOT_FISHING vessel) does NOT
+    count as risk; that is the pipeline correctly skipping a clean case.
+    """
+    rendered = "EVIDENCE_PDF_RENDERED" in summary
+    pdf_path: str | None = None
+    case_id: str | None = None
+    if rendered:
+        path_match = _PDF_PATH_RE.search(summary)
+        if path_match:
+            pdf_path = path_match.group(1).strip()
+        case_match = _CASE_ID_RE.search(summary)
+        if case_match:
+            case_id = case_match.group(1).strip()
+    return {"risk": rendered, "pdf_path": pdf_path, "case_id": case_id}
+
+
+def evaluate_incident_structured(
+    latitude: float,
+    longitude: float,
+    radius_miles: float = 50.0,
+    port_country_code: str | None = None,
+    mmsi: str | None = None,
+) -> dict:
+    """Same pipeline as evaluate_incident, returned as a structured dict.
+
+    Shape:
+      {
+        "risk":     bool,            # True iff a prosecution PDF was rendered
+        "summary":  str,              # full supervisor synthesis
+        "pdf_path": str | None,       # absolute path to combined_legal_package.pdf
+        "case_id":  str | None,       # IUU-YYYYMMDD-HHMMSS-XXXX
+      }
+    """
+    summary = evaluate_incident(
+        latitude,
+        longitude,
+        radius_miles=radius_miles,
+        port_country_code=port_country_code,
+        mmsi=mmsi,
+    )
+    artifacts = _parse_pipeline_artifacts(summary)
+    return {"summary": summary, **artifacts}
 
 
 def main() -> None:
