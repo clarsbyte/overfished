@@ -2,41 +2,30 @@
   "name": "overfish-ai-frontend",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
   "scripts": {
     "predev": "../backend/.venv/bin/python ../scripts/generate_ts_types.py || python3 ../scripts/generate_ts_types.py",
     "prebuild": "../backend/.venv/bin/python ../scripts/generate_ts_types.py || python3 ../scripts/generate_ts_types.py",
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@radix-ui/react-dialog": "^1.1.2",
-    "@tanstack/react-query": "^5.59.0",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.1",
-    "framer-motion": "^11.11.0",
-    "lucide-react": "^0.452.0",
-    "react": "^18.3.1",
-    "react-countup": "^6.5.3",
-    "react-dom": "^18.3.1",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "react-globe.gl": "^2.37.1",
-    "tailwind-merge": "^2.5.4",
-    "three": "^0.169.0"
+    "three": "^0.179.0"
   },
   "devDependencies": {
-    "@types/geojson": "^7946.0.16",
-    "@types/node": "^22.7.4",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.0",
-    "@types/three": "^0.184.0",
-    "@vitejs/plugin-react": "^4.3.2",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.13",
-    "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.6.2",
-    "vite": "^5.4.8"
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.179.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
