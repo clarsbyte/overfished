@@ -52,5 +52,6 @@ Thumbs.db
 # Local pipeline data / artifacts
 data/local_pipeline/raw/*
 !data/local_pipeline/raw/.gitkeep
+!data/local_pipeline/raw/README.md
 data/local_pipeline/output/*
 !data/local_pipeline/output/.gitkeep

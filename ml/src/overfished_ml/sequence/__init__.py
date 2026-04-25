@@ -19,6 +19,13 @@ from .dataset import (
 from .metrics import classification_metrics, ensemble_probabilities
 from .models import BoatBiLSTMClassifier, BoatRNNClassifier, build_model
 from .pipeline import SequenceBatch, TopKMmsiPredictions, forward_scores, predict_topk_mmsi, soft_assign_boats
+from .report import (
+    build_sequence_report,
+    format_sequence_narration,
+    normalize_fishing_dataframe,
+    resolve_allowed_csv_path,
+    synthetic_events_dataframe,
+)
 from .train import ModelTrainingResult, TrainingComparisonResult, TrainingConfig, train_and_compare_models, train_sequence_model
 
 __all__ = [
@@ -27,6 +34,11 @@ __all__ = [
     "BoatRNNClassifier",
     "DatabricksConnectionConfig",
     "ModelTrainingResult",
+    "build_sequence_report",
+    "format_sequence_narration",
+    "normalize_fishing_dataframe",
+    "resolve_allowed_csv_path",
+    "synthetic_events_dataframe",
     "MmsiSequenceDataset",
     "SequenceBatch",
     "SequenceDatasetBundle",

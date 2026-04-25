@@ -10,9 +10,48 @@ pip install -e ".[dev]"
 pip install -r ../backend/requirements.txt   # for /agent/* and /comms/* endpoints
 ```
 
+Optional RNN/BiLSTM soft-probability report route (`/ml/sequence/report`):
+
+```bash
+pip install -e ../ml
+pip install -e ".[ml]"
+```
+
 Run: `uvicorn overfished_api.main:app --reload --port 8000`
 
 OpenAPI docs render at `http://localhost:8000/docs`.
+
+## Agent backend modes (`/agent/run`)
+
+`AGENT_BACKEND` now supports:
+
+- `noop` (default) - simple scaffold response
+- `langchain` - loads `plugins/langchain_plugin`
+- `fetch` - loads `plugins/fetch_plugin`
+- `hybrid` (or `fetch_hybrid`) - tries Fetch first, then falls back to LangChain, then noop
+
+Hybrid reliability env vars:
+
+- `FETCH_AGENT_ENABLED` (`true`/`false`, default `true`)
+- `FETCH_AGENT_TIMEOUT_SECONDS` (default `2.5`)
+- `FETCH_AGENT_MAX_RETRIES` (default `1`)
+- `FETCH_AGENT_PDF_BRIDGE_TIMEOUT_SECONDS` (default `20`)
+- `FETCH_AGENT_FAST_MODE` (default `1`) enables fast legal-action bridge for `/agent/run`
+- `FETCH_AGENT_FAST_TIMEOUT_SECONDS` (default `10`)
+- `FETCH_AGENT_FAST_NO_LLM` (default `1`) uses deterministic low-latency legal action policy for demos
+
+From repo root, install optional plugins:
+
+```bash
+pip install -e ./api
+pip install -e ./plugins/langchain_plugin
+pip install -e ./plugins/fetch_plugin
+export AGENT_BACKEND=hybrid
+```
+
+For legal-action orchestration via existing backend PDF pipeline, call
+`POST /agent/run` with context keys `latitude` and `longitude` (optional:
+`radius_miles`, `port_country_code`, `mmsi`) and a legal-style query.
 
 ## Endpoint overview
 
@@ -22,6 +61,8 @@ OpenAPI docs render at `http://localhost:8000/docs`.
 | GET    | `/regions/{region_id}` | Stub — returns `not_implemented`. |
 | GET    | `/vessels/{vessel_id}` | Stub — returns `not_implemented`. |
 | POST   | `/agent/run` | Pluggable backend agent (legacy). |
+| GET    | `/ml/sequence/demo` | **Quick live demo** — same as sample report in-browser (takes ~10–20s; needs `overfished-ml`). |
+| POST   | `/ml/sequence/report` | Train RNN+BiLSTM on vessel events, return soft probs + template narration (requires `overfished-ml`). |
 | POST   | `/agent/gfw` | GFW IUU classification for one vessel. |
 | POST   | `/agent/vessel` | AIS lookup near a coordinate. |
 | POST   | `/agent/law` | Citation-backed legal dossier. |

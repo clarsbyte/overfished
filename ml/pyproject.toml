@@ -18,9 +18,12 @@ dependencies = [
 
 [project.scripts]
 overfished-pipeline = "overfished_ml.local_pipeline.cli:main"
+overfished-enrich-images = "overfished_ml.image_enrichment.cli:main"
+overfished-sequence-report = "overfished_ml.sequence.cli:main"
+overfished-gx10 = "overfished_ml.local_pipeline.gx10_cli:main"
 
 [project.optional-dependencies]
-dev = ["ruff>=0.8.0"]
+dev = ["pytest>=8.0.0", "ruff>=0.8.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/overfished_ml"]

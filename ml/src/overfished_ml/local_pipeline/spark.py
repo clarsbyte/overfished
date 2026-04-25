@@ -46,13 +46,14 @@ def assert_java_compatibility(min_major: int = 17) -> None:
 def create_spark_session(config: SparkConfig) -> SparkSession:
     """Create and return a Spark session using local defaults."""
     assert_java_compatibility()
-    spark = (
+    builder = (
         SparkSession.builder.appName(config.app_name)
         .master(config.master)
         .config("spark.driver.memory", config.driver_memory)
+        .config("spark.executor.memory", config.executor_memory)
         .config("spark.sql.shuffle.partitions", str(config.shuffle_partitions))
         .config("spark.sql.adaptive.enabled", str(config.adaptive_enabled).lower())
-        .getOrCreate()
     )
+    spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel(config.log_level)
     return spark

@@ -4,30 +4,39 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import sys
 from pathlib import Path
 
 from .config import Gx10Config, PipelinePaths, SparkConfig
+from .config import _repo_root
 from .remote import run_pipeline_on_gx10, sync_project_subset_to_gx10
 from .runner import run_local_pipeline
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[5]
-
-
 def _build_parser() -> argparse.ArgumentParser:
+    e = SparkConfig.from_env()
     parser = argparse.ArgumentParser(description="Run overfished local medallion pipeline")
     parser.add_argument("--runtime", choices=["local", "gx10"], default="local")
-    parser.add_argument("--input-path", type=Path, default=PipelinePaths.default().fishing_events_csv)
-    parser.add_argument("--bronze-output", type=Path, default=PipelinePaths.default().bronze_output)
-    parser.add_argument("--silver-output", type=Path, default=PipelinePaths.default().silver_output)
-    parser.add_argument("--gold-output", type=Path, default=PipelinePaths.default().gold_output)
-    parser.add_argument("--spark-driver-memory", default="4g")
-    parser.add_argument("--spark-shuffle-partitions", type=int, default=8)
-    parser.add_argument("--spark-master", default="local[*]")
-    parser.add_argument("--sync-gx10", action="store_true", help="rsync required subset before remote run")
-    parser.add_argument("--gx10-remote-python", default="python3")
+    p_default = PipelinePaths.default()
+    parser.add_argument("--input-path", type=Path, default=p_default.fishing_events_csv)
+    parser.add_argument("--bronze-output", type=Path, default=p_default.bronze_output)
+    parser.add_argument("--silver-output", type=Path, default=p_default.silver_output)
+    parser.add_argument("--gold-output", type=Path, default=p_default.gold_output)
+    parser.add_argument("--spark-master", default=None, help=f"default: env or {e.master!r}")
+    parser.add_argument("--spark-driver-memory", default=None, help=f"default: env or {e.driver_memory!r}")
+    parser.add_argument("--spark-shuffle-partitions", type=int, default=None, help=f"default: env or {e.shuffle_partitions}")
+    parser.add_argument(
+        "--sync-gx10",
+        action="store_true",
+        help="rsync ml/ + data/ to GX10 (see also --gx10-minimal-data-sync)",
+    )
+    parser.add_argument(
+        "--gx10-minimal-data-sync",
+        action="store_true",
+        help="Sync only data/local_pipeline instead of full data/ (smaller, excludes top-level data/*.csv).",
+    )
+    parser.add_argument("--gx10-remote-python", default=os.getenv("GX10_REMOTE_PYTHON", "python3"))
     return parser
 
 
@@ -59,19 +68,44 @@ def _as_paths(args: argparse.Namespace) -> PipelinePaths:
     )
 
 
+def _merged_spark_config(args: argparse.Namespace) -> SparkConfig:
+    b = SparkConfig.from_env()
+    shuf = (
+        b.shuffle_partitions
+        if args.spark_shuffle_partitions is None
+        else int(args.spark_shuffle_partitions)
+    )
+    return SparkConfig(
+        app_name=b.app_name,
+        master=args.spark_master or b.master,
+        driver_memory=args.spark_driver_memory or b.driver_memory,
+        executor_memory=b.executor_memory,
+        shuffle_partitions=shuf,
+        adaptive_enabled=b.adaptive_enabled,
+        log_level=b.log_level,
+    )
+
+
+def _spark_args_for_remote(sc: SparkConfig) -> str:
+    return " ".join(
+        [
+            "--spark-master",
+            shlex.quote(sc.master),
+            "--spark-driver-memory",
+            shlex.quote(sc.driver_memory),
+            "--spark-shuffle-partitions",
+            str(sc.shuffle_partitions),
+        ]
+    )
+
+
 def main() -> int:
     args = _build_parser().parse_args()
     paths = _as_paths(args)
+    sc = _merged_spark_config(args)
 
     if args.runtime == "local":
-        result = run_local_pipeline(
-            paths=paths,
-            spark_config=SparkConfig(
-                master=args.spark_master,
-                driver_memory=args.spark_driver_memory,
-                shuffle_partitions=args.spark_shuffle_partitions,
-            ),
-        )
+        result = run_local_pipeline(paths=paths, spark_config=sc)
         print(
             "Pipeline completed. "
             f"bronze={result.bronze_count}, silver={result.silver_count}, "
@@ -81,19 +115,19 @@ def main() -> int:
 
     gx10 = _gx10_config_from_env()
     if args.sync_gx10:
-        sync_project_subset_to_gx10(gx10, _repo_root())
+        sync_project_subset_to_gx10(
+            gx10,
+            _repo_root(),
+            include_data_tree=not args.gx10_minimal_data_sync,
+        )
 
-    remote_paths = PipelinePaths(
-        fishing_events_csv=Path("data/local_pipeline/sample_fishing_events.csv"),
-        bronze_output=Path("data/local_pipeline/output/bronze_fishing_events"),
-        silver_output=Path("data/local_pipeline/output/silver_fishing_events"),
-        gold_output=Path("data/local_pipeline/output/gold_fishing_features"),
+    exit_code = run_pipeline_on_gx10(
+        gx10,
+        remote_python=args.gx10_remote_python,
+        paths=paths,
+        repo_root=_repo_root(),
+        extra_pipeline_args=_spark_args_for_remote(sc),
     )
-    exit_code = run_pipeline_on_gx10(gx10, remote_python=args.gx10_remote_python, paths=remote_paths)
     if exit_code != 0:
         print(f"GX10 run failed with exit code {exit_code}", file=sys.stderr)
     return exit_code
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -24,6 +24,7 @@ EXCLUDED_FEATURE_COLUMNS = {
     "ingested_at",
     "fishing_processed_at",
     "detection_processed_at",
+    "ship_image_url",
 }
 
 
