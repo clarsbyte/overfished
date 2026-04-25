@@ -26,11 +26,25 @@ cloudinary>=1.39
 python-dotenv>=1.0
 
 # Existing AIS streaming integration (kept alongside new tools/)
-langchain>=0.3.0
-langchain-anthropic>=0.3.0
-langchain-core>=0.3.0
+# Pinned to 0.3.x — LangChain 1.0 moved AgentExecutor out of langchain.agents
+# and the agents in this repo are written for the 0.3 tool-calling-agent API.
+langchain>=0.3,<1.0
+langchain-anthropic>=0.3,<1.0
+langchain-core>=0.3,<1.0
 websockets>=12.0
 
 # Test
 pytest>=8.0
 pytest-asyncio>=0.23
+
+# Twilio (phone call warnings)
+twilio>=9.0.0
+
+# AI conversational call (Claude Haiku reading evidence PDFs)
+anthropic>=0.40
+pypdf>=4.0  # PyPDF2 also works as a fallback
+
+# RAG: legal-rule retrieval. Pure-Python; the heavy ML stack
+# (sentence-transformers, transformers, torch) is in requirements-rag.txt
+# and lazy-imported by services/legal_vectorstore.py.
+qdrant-client>=1.9

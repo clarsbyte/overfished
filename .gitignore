@@ -12,12 +12,20 @@ __pycache__/
 venv/
 env/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
-# Node / Vite
+# Node / Vite / Next.js
 node_modules/
 dist/
 .vite/
+.next/
 *.tsbuildinfo
+
+# We use pnpm; ignore lockfiles from other package managers so accidental
+# `npm install` runs don't drop a divergent lockfile in the repo.
+frontend/package-lock.json
+frontend/yarn.lock
 
 # Generated artifacts
 backend/output/

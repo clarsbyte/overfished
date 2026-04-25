@@ -164,6 +164,7 @@ class DocumentArtifact(_Strict):
         "cease_and_desist_order",
         "port_inspection_order",
         "evidence_package",
+        "combined_legal_package",
     ]
     html_url: str
     pdf_url: str
