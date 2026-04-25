@@ -1,0 +1,51 @@
+{% extends '_base.html' %}
+
+{% block stripe_text %}Cease and Desist Order — Immediate Compliance Required{% endblock %}
+
+{% block subject %}
+  Cease and Desist Order — Active Violation within the {{ case.region.name }}
+{% endblock %}
+
+{% block reference_legal_basis %}
+  <tr><td>Legal Basis</td><td>UNCLOS Art. 73</td></tr>
+  <tr><td></td><td>PSMA Art. 9</td></tr>
+{% endblock %}
+
+{% block body %}
+  <section>
+    <h2><span class="roman">I.</span> Findings</h2>
+    <ol class="legal-list">
+      {% for finding in findings %}
+        <li><span class="lead">Whereas,</span> {{ finding | safe }}</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">II.</span> Order to Cease and Desist</h2>
+    <p style="margin-top: 0;">
+      Acting under authority of the Galápagos National Park Directorate, the undersigned hereby
+      <strong>ORDERS</strong> the Master and Owner of <strong>FV {{ case.vessel.name }}</strong>
+      (MMSI <span class="mono">{{ case.vessel.mmsi }}</span>) to:
+    </p>
+    <ol class="legal-list">
+      <li><span class="lead">Now therefore,</span> <strong>CEASE</strong> all fishing operations immediately, including the deployment, retrieval, or storage of any fishing gear;</li>
+      <li><span class="lead">Now therefore,</span> <strong>RE-ENABLE</strong> continuous AIS transmission per <span class="cite">SOLAS Chapter V, Regulation 19</span> and maintain transmission until clearance is granted;</li>
+      <li><span class="lead">Now therefore,</span> <strong>EXIT</strong> the {{ case.region.name }} via the most direct navigable course, with the route to be verified by satellite tracking;</li>
+      <li><span class="lead">Now therefore,</span> <strong>ACKNOWLEDGE</strong> receipt of this Order via VHF Channel 16 within <strong>twenty-four (24) hours</strong> of transmission. A radio broadcast of this Order has been issued in parallel.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">III.</span> Consequences of Non-Compliance</h2>
+    <div class="response-box">
+      <p style="margin-top: 0;">
+        Failure to comply within the 24-hour acknowledgement window shall result in (a) interdiction by Ecuadorian Maritime Authority, (b) referral to the Republic of Ecuador's Public Prosecutor's Office under <span class="cite">LOREG Article 75</span>, and (c) notification of the flag state's competent authority under <span class="cite">FAO Compliance Agreement, Article III</span>.
+      </p>
+      <p style="margin-bottom: 0;">
+        <span class="deadline">ACKNOWLEDGEMENT DEADLINE: {{ acknowledge_deadline | default('19 April 2026, 11:27 UTC') }} (24 hours from issuance).</span>
+        Concurrent civil penalty assessment is set forth in the accompanying Notice of Violation.
+      </p>
+    </div>
+  </section>
+{% endblock %}

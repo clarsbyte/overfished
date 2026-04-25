@@ -1,0 +1,64 @@
+{% extends '_base.html' %}
+
+{% block stripe_text %}Port State Inspection Order — PSMA Article 9{% endblock %}
+
+{% block subject %}
+  Request for Inspection-on-Arrival and Denial of Port Entry Pursuant to PSMA Article 9
+{% endblock %}
+
+{% block reference_legal_basis %}
+  <tr><td>Legal Basis</td><td>PSMA Art. 9(4)</td></tr>
+  <tr><td></td><td>PSMA Art. 11</td></tr>
+{% endblock %}
+
+{% block recipient %}
+  <div class="recipient">
+    <span class="label">To: Port Authority</span>
+    <strong>{{ port.name | default('Port of Manta') }}</strong>
+    {% if port.un_locode %}(UN/LOCODE <span class="mono">{{ port.un_locode }}</span>){% endif %}<br>
+    {% if port.country %}{{ port.country_full | default(port.country) }}<br>{% endif %}
+    <strong>Subject Vessel:</strong> {{ case.vessel.name }} —
+    MMSI <span class="mono">{{ case.vessel.mmsi }}</span>
+    {% if case.vessel.imo %}, IMO <span class="mono">{{ case.vessel.imo }}</span>{% endif %},
+    flag {{ case.vessel.flag | default('—') }}<br>
+    <strong>Predicted ETA:</strong> {{ predicted_eta_human | default('approximately 36 hours from issuance') }}<br>
+    <div class="served">Served via PSMA Art. 7 information exchange chain to the competent authority of the destination port.</div>
+  </div>
+{% endblock %}
+
+{% block body %}
+  <section>
+    <h2><span class="roman">I.</span> Findings Supporting This Request</h2>
+    <ol class="legal-list">
+      {% for finding in findings %}
+        <li><span class="lead">Whereas,</span> {{ finding | safe }}</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">II.</span> Request for Action</h2>
+    <p style="margin-top: 0;">
+      Pursuant to <span class="cite">FAO Port State Measures Agreement, Article 9(4)</span>, the Government of Ecuador, through the Galápagos National Park Directorate, formally <strong>REQUESTS</strong> that the {{ port.name | default('Port of Manta') }} authority undertake the following:
+    </p>
+    <ol class="legal-list">
+      <li><span class="lead">Item 1:</span> <strong>DENY PORT ENTRY</strong> to the subject vessel pending compliance investigation per PSMA Article 9(4);</li>
+      <li><span class="lead">Item 2:</span> If port entry is granted on humanitarian, safety, or compliance grounds, conduct a <strong>FULL INSPECTION</strong> of the vessel's logbook, fishing gear, catch, and AIS records per PSMA Article 11;</li>
+      <li><span class="lead">Item 3:</span> Detain any catch landed pending verification of legal origin per PSMA Article 18;</li>
+      <li><span class="lead">Item 4:</span> Furnish a written inspection report to the Galápagos National Park Directorate within <strong>seven (7) days</strong> of vessel arrival, addressed to the Marine Enforcement Unit;</li>
+      <li><span class="lead">Item 5:</span> Notify the IATTC Secretariat of the inspection outcome per IATTC Resolution C-19-01 §6.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">III.</span> Evidence Bundle</h2>
+    <div class="response-box">
+      <p style="margin-top: 0;">
+        The complete evidence dossier (Case File <span class="mono">{{ ref.file_reference | default('GAL-MR-26-0142') }}</span>) is available via secure transfer; SHA-256 verified. Includes AIS gap timeline, Sentinel-1A SAR imagery (Cloudinary-hosted), GFW Insights vessel report, and the parallel-issued Notice of Violation and Cease and Desist Order.
+      </p>
+      <p style="margin-bottom: 0;">
+        <span class="deadline">RESPONSE COORDINATION: enforcement@galapagospark.gob.ec · +593 5 252-6189</span>
+      </p>
+    </div>
+  </section>
+{% endblock %}
