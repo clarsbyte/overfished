@@ -71,6 +71,41 @@ EVIDENCE DOCUMENT
 -----------------
 """
 
+
+PORT_AUTHORITY_SYSTEM_PROMPT = """You are an automated maritime intelligence voice agent.
+You are calling the port authority of {port_name}{port_country_suffix} to report
+a suspicious vessel detected near their jurisdiction. The case file is reproduced
+below as the EVIDENCE DOCUMENT.
+
+REPORTING SUBJECT:
+- Vessel: {vessel_name} (MMSI {mmsi})
+- Recipient port: {port_name}
+
+You are speaking with port-authority staff who have received the case file and
+may have follow-up questions. Help them act on the report — what was detected,
+where, why we believe it is suspicious, and what action the case file recommends.
+
+CRITICAL RULES:
+1. Answer strictly from facts present in the EVIDENCE DOCUMENT. Do not invent
+   regulations, dates, coordinates, fines, or vessel details that are not
+   explicitly written there.
+2. If the port authority asks anything not covered by the evidence, reply exactly:
+   "That information is not in the case file. The full dossier and supporting
+   data are available on request from the issuing monitoring authority."
+3. Keep every reply under two short sentences. This is a phone call.
+4. Tone: calm, factual, professional, like one enforcement agency briefing
+   another. You are not accusing the port — you are sharing intelligence
+   for their review and action.
+5. If the port authority asks what you want them to do, summarise the case
+   file's recommended actions (port-state inspection, denial of port entry,
+   notification chain) using only language present in the EVIDENCE DOCUMENT.
+
+EVIDENCE DOCUMENT
+-----------------
+{evidence}
+-----------------
+"""
+
 # call_sid -> {vessel_name, mmsi, case_id, evidence, history: list[{role, content}]}
 _CALL_SESSIONS: dict[str, dict[str, Any]] = {}
 
@@ -233,14 +268,23 @@ def register_call_session(
     mmsi: str,
     case_id: str = DEFAULT_DEMO_CASE_ID,
     doc_filename: str = DEFAULT_DEMO_DOC,
+    port_name: str = "",
+    port_country: str = "",
 ) -> dict[str, Any]:
-    """Pre-load the evidence PDF text once per call so each turn is cheap."""
+    """Pre-load the evidence PDF text once per call so each turn is cheap.
+
+    When `port_name` is set, the recipient is treated as the port authority and
+    the Haiku grounding prompt reframes the conversation as a *report TO the
+    port* about a suspicious vessel (rather than a warning TO the vessel).
+    """
     evidence = load_pdf_evidence(case_id, doc_filename)
     session = {
         "vessel_name": vessel_name,
         "mmsi": mmsi,
         "case_id": case_id,
         "evidence": evidence,
+        "port_name": port_name or "",
+        "port_country": port_country or "",
         "history": [],
     }
     _CALL_SESSIONS[call_sid] = session
@@ -279,10 +323,24 @@ def haiku_respond(call_sid: str, user_text: str) -> str:
     client = _anthropic_client()
     history: list[dict[str, str]] = session["history"]
     messages = list(history) + [{"role": "user", "content": user_text}]
+
+    if session.get("port_name"):
+        country = (session.get("port_country") or "").strip()
+        suffix = f" ({country})" if country else ""
+        system_prompt = PORT_AUTHORITY_SYSTEM_PROMPT.format(
+            port_name=session["port_name"],
+            port_country_suffix=suffix,
+            vessel_name=session["vessel_name"],
+            mmsi=session["mmsi"],
+            evidence=session["evidence"],
+        )
+    else:
+        system_prompt = AI_SYSTEM_PROMPT.format(evidence=session["evidence"])
+
     resp = client.messages.create(
         model=HAIKU_MODEL,
         max_tokens=300,
-        system=AI_SYSTEM_PROMPT.format(evidence=session["evidence"]),
+        system=system_prompt,
         messages=messages,
     )
     parts: list[str] = []

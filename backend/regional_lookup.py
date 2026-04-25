@@ -157,6 +157,10 @@ def _missing_layers(
         gaps.append("protectedseas: point did not intersect any LFP polygon (open-water or sub-LFP-1).")
     if coastal is None:
         gaps.append("coastal_state: coordinate outside cached coastal-state bboxes — EEZ polygon lookup not yet wired.")
+        gaps.append(
+            "hint: call query_faolex_rag(query=<vessel context>, country_code=<iso3>) "
+            "for semantically-retrieved rules across ECU/PHL/ESP/CHN/IDN."
+        )
     if port is None:
         gaps.append("port_state: no port country supplied or port not in cache.")
     return gaps

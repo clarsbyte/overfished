@@ -27,6 +27,11 @@ EVENT_DATASETS: dict[str, str] = {
 
 DEFAULT_INSIGHT_INCLUDES = ["FISHING", "GAP", "COVERAGE", "VESSEL-IDENTITY-IUU-VESSEL-LIST"]
 
+# GFW selfReportedInfo.shiptypes values that indicate a fishing-capable vessel.
+# Strictly "FISHING"; carriers/bunkers/supports enable IUU but are not themselves
+# fishing vessels per AIS / GFW classification.
+_FISHING_SHIP_TYPES = {"FISHING"}
+
 
 @dataclass
 class VesselRecord:
@@ -117,6 +122,25 @@ def pick_best_vessel(
             )
 
     return max(pool, key=lambda r: (len(r.authorizations), len(r.owners), bool(r.imo)))
+
+
+def is_fishing_vessel(record: VesselRecord) -> bool:
+    """True if a GFW vessel-identity record describes a fishing-capable vessel.
+
+    Two signals from GFW selfReportedInfo:
+      - geartypes is set (PURSE_SEINES, TRAWLERS, POTS_AND_TRAPS, ...) — the
+        vessel carries fishing gear, so it is a fishing vessel by construction.
+      - shiptypes contains "FISHING" (the broad GFW class).
+
+    Carriers, bunkers, support vessels, tankers and cargo ships return False
+    even though they may participate in IUU operations — the IUU classifier
+    pipeline is scoped to *fishing vessels* per the user requirement.
+    """
+    if record.gear_type and str(record.gear_type).strip():
+        return True
+    if record.ship_type and str(record.ship_type).strip().upper() in _FISHING_SHIP_TYPES:
+        return True
+    return False
 
 
 def search_vessel(query: str, limit: int = 10) -> list[VesselRecord]:
@@ -312,6 +336,109 @@ def get_sar_detections_in_region(
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def find_nearest_port_via_gfw(
+    lat: float,
+    lon: float,
+    search_radius_mi: float = 200.0,
+    days_back: int = 90,
+) -> dict[str, Any] | None:
+    """Find the closest port to (lat, lon) by querying recent GFW PORT_VISIT events.
+
+    PORT_VISIT events carry an `port_visit` block with `endAnchorage` /
+    `intermediateAnchorage` objects, each describing the visited port (name,
+    flag, lat, lon). We collect every distinct anchorage in a wide bbox around
+    the suspect coordinate and return the geographically closest one.
+
+    Returns {name, country, lat, lon, distance_mi, source: 'gfw'} or None when
+    GFW returns no PORT_VISIT events in the window (typical for remote MPAs —
+    callers should fall back to the static directory).
+    """
+    import math
+    from datetime import date, timedelta
+
+    end_d = date.today()
+    start_d = end_d - timedelta(days=days_back)
+
+    # Wide bbox so we cover the whole approach corridor.
+    deg_lat = search_radius_mi / 69.0
+    cos_lat = max(math.cos(math.radians(lat)), 0.01)
+    deg_lon = search_radius_mi / (69.0 * cos_lat)
+    bbox = (lat - deg_lat, lon - deg_lon, lat + deg_lat, lon + deg_lon)
+
+    try:
+        events = get_events_in_region(
+            bbox,
+            event_type="PORT_VISIT",
+            start_date=start_d.isoformat(),
+            end_date=end_d.isoformat(),
+            limit=200,
+        )
+    except Exception:
+        return None
+    if not events:
+        return None
+
+    seen: dict[tuple, dict[str, Any]] = {}
+    for ev in events:
+        pv = ev.get("port_visit") or {}
+        for key in ("endAnchorage", "intermediateAnchorage", "startAnchorage"):
+            anchor = pv.get(key)
+            if not isinstance(anchor, dict):
+                continue
+            name = anchor.get("name")
+            alat = anchor.get("lat")
+            alon = anchor.get("lon")
+            if not name or alat is None or alon is None:
+                continue
+            sig = (name, anchor.get("flag"))
+            if sig not in seen:
+                seen[sig] = {
+                    "name": name,
+                    "country": anchor.get("flag"),
+                    "lat": float(alat),
+                    "lon": float(alon),
+                }
+
+    if not seen:
+        return None
+
+    earth_mi = 3958.7613
+    def _hav(la1, lo1, la2, lo2):
+        p1, p2 = math.radians(la1), math.radians(la2)
+        dlat = math.radians(la2 - la1)
+        dlon = math.radians(lo2 - lo1)
+        a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
+        return 2 * earth_mi * math.asin(math.sqrt(a))
+
+    best = min(
+        seen.values(),
+        key=lambda p: _hav(lat, lon, p["lat"], p["lon"]),
+    )
+    best["distance_mi"] = round(_hav(lat, lon, best["lat"], best["lon"]), 1)
+    best["source"] = "gfw"
+    return best
+
+
+def find_nearest_port(lat: float, lon: float) -> dict[str, Any] | None:
+    """Return the closest port to (lat, lon) — GFW PORT_VISIT first, static fallback.
+
+    Always returns a port dict on success: {name, country, lat, lon, distance_mi,
+    source}. The static fallback covers remote regions where GFW PORT_VISIT
+    coverage is sparse. Returns None only if both layers fail.
+    """
+    try:
+        gfw_port = find_nearest_port_via_gfw(lat, lon)
+    except Exception:
+        gfw_port = None
+    if gfw_port:
+        return gfw_port
+    try:
+        from tools.ports import nearest_static_port
+    except ImportError:
+        return None
+    return nearest_static_port(lat, lon)
 
 
 def sar_detection_count(payload: dict[str, Any]) -> int | None:
