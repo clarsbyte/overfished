@@ -26,25 +26,52 @@
  */
 
 import { api } from "@/lib/api";
+import { whenLandMaskReady } from "@/lib/landMask";
+import { generateRoutes } from "@/lib/proceduralRoutes";
 import type { Vessel } from "@/types/schemas";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Globe, { type GlobeMethods } from "react-globe.gl";
 import * as THREE from "three";
 import {
+  useFlightPathLayer,
+  type Route as FlightRoute,
+} from "@/flightPath/useFlightPathLayer";
+import { useGlobeControls } from "./GlobeControls";
+import {
   type AnimatedVessel,
   type FleetVessel,
   useAnimatedFleet,
 } from "./useAnimatedFleet";
 import { useDrawController } from "./useDrawController";
-import { makeVesselMesh, preloadVesselModel } from "./vesselMesh";
+import { makeLightweightVesselMesh, makeVesselMesh, preloadVesselModel } from "./vesselMesh";
 
-interface PortCallArc {
+export interface PortCall {
   startLat: number;
   startLng: number;
   endLat: number;
   endLng: number;
 }
+
+/** Internal arc kinds — only the demo trajectory + port-call beat use
+ * react-globe.gl's Arcs layer now. The dense ambient flight-path traffic
+ * lives in a separate Three.js InstancedMesh layer (see ./flightPath/).
+ */
+type AnyArc =
+  | {
+      kind: "demo_track";
+      startLat: number;
+      startLng: number;
+      endLat: number;
+      endLng: number;
+    }
+  | {
+      kind: "port_call";
+      startLat: number;
+      startLng: number;
+      endLat: number;
+      endLng: number;
+    };
 
 export interface FisheryRegion {
   region_id: string;
@@ -57,7 +84,7 @@ interface Props {
   draw: ReturnType<typeof useDrawController>;
   onVesselSelected: (vessel: Vessel) => void;
   onRegionSelected?: (region: FisheryRegion) => void;
-  portCallArcs?: PortCallArc[];
+  portCalls?: PortCall[];
 }
 
 // Blue Marble (NASA): bright daytime imagery, visible continents and oceans.
@@ -80,9 +107,12 @@ export function OverfishGlobe({
   draw,
   onVesselSelected,
   onRegionSelected,
-  portCallArcs = [],
+  portCalls = [],
 }: Props) {
   const globeRef = useRef<GlobeMethods>();
+
+  // Live-tunable controls (leva panel mounted in main.tsx).
+  const controls = useGlobeControls();
 
   // Track when the GLTF model is ready so vessel meshes can re-render to
   // pick it up. We bump a cache-busting key on load — the meshCacheRef gets
@@ -198,7 +228,12 @@ export function OverfishGlobe({
     let mesh = meshCacheRef.current.get(v.mmsi);
     if (!mesh) {
       const isFlagged = v.mmsi === DEMO_MMSI;
-      mesh = makeVesselMesh(RISK_COLOR[v.risk], isFlagged);
+      // The flagged demo vessel gets the polished PBR ship (we zoom close to
+      // it). Every other vessel uses the lightweight BoxGeometry build —
+      // ~6× fewer vertices and no MeshStandardMaterial shading cost.
+      mesh = isFlagged
+        ? makeVesselMesh(RISK_COLOR[v.risk], true)
+        : makeLightweightVesselMesh(RISK_COLOR[v.risk]);
       const scale = isFlagged ? 1.6 : 1.2;
       mesh.scale.set(scale, scale, scale);
       meshCacheRef.current.set(v.mmsi, mesh);
@@ -216,25 +251,109 @@ export function OverfishGlobe({
     return m ? [m] : [];
   }, [animatedVessels]);
 
-  // ── Paths: demo vessel trajectory + ambient wakes + drawing polyline ──
-  // Wake trails: every ambient vessel's full track is rendered as a faint
-  // animated dashed path. Reads as 80 simultaneous AIS history lines moving
-  // alongside their ships.
+  // ── Flight-path layer: dense procedural routes with InstancedMesh ────
+  // The visible-everywhere ambient traffic. Generated deterministically
+  // (seeded) so hot-reload doesn't reshuffle the route set on every render.
+  // Color hints map RouteRisk → curve gradient + vessel tint.
+  //
+  // Async because route generation depends on the land/ocean mask being
+  // loaded. While the mask is in flight, `flightRoutes` is empty and the
+  // layer renders nothing — typical first-paint delay is ~50ms.
+  const [flightRoutes, setFlightRoutes] = useState<FlightRoute[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (controls.flightCount <= 0) {
+      setFlightRoutes([]);
+      return;
+    }
+    void whenLandMaskReady().then(() => {
+      if (cancelled) return;
+      const routes: FlightRoute[] = generateRoutes(controls.flightCount, 42).map(
+        (r) => {
+          const c = RISK_COLOR[r.risk];
+          return {
+            waypoints: r.waypoints,
+            // Curve fades from 25% alpha cool to bright at the destination.
+            curveColorStart: new THREE.Color(c).multiplyScalar(0.25),
+            curveColorEnd: new THREE.Color(c),
+            vesselColor: c,
+          };
+        },
+      );
+      setFlightRoutes(routes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [controls.flightCount]);
+
+  useFlightPathLayer(globeRef, {
+    routes: flightRoutes,
+    showVessels: controls.showVessels,
+    showPaths: controls.showPaths,
+    vesselSize: controls.vesselSize,
+    animationSpeed: controls.animationSpeed,
+    tiltMode: controls.tiltMode,
+    dashSize: controls.dashSize,
+    gapSize: controls.gapSize,
+    vesselElevation: controls.vesselElevation,
+    arcMinAltitude: controls.arcMinAltitude,
+    arcMaxAltitude: controls.arcMaxAltitude,
+  });
+
+  // ── Arcs: demo vessel parabolic trajectory + port-call surface line ──
+  // The dense ambient flight-path traffic is a separate Three.js
+  // InstancedMesh layer (see ./flightPath/useFlightPathLayer.ts), so the
+  // Arcs layer only handles the two narrative beats.
+  const arcsData: AnyArc[] = useMemo(() => {
+    const out: AnyArc[] = [];
+    const track = trackQ.data;
+    if (track && track.length >= 2) {
+      const [startLat, startLng] = track[0];
+      const [endLat, endLng] = track[track.length - 1];
+      out.push({ kind: "demo_track", startLat, startLng, endLat, endLng });
+    }
+    for (const c of portCalls) {
+      out.push({
+        kind: "port_call",
+        startLat: c.startLat,
+        startLng: c.startLng,
+        endLat: c.endLat,
+        endLng: c.endLng,
+      });
+    }
+    return out;
+  }, [trackQ.data, portCalls]);
+
+  // Pulsing rings at every active port-call destination (the "notification
+  // landed" beat). The rings layer already pulses the flagged vessel; we
+  // append destination points to a separate ringsData below.
+  const portPulseRings = useMemo(() => {
+    return portCalls.map((c) => ({ lat: c.endLat, lng: c.endLng }));
+  }, [portCalls]);
+
+  const allRingsData = useMemo(
+    () => [
+      ...flagged.map((v) => ({ lat: v.lat, lng: v.lng, kind: "flagged" as const })),
+      ...portPulseRings.map((p) => ({ lat: p.lat, lng: p.lng, kind: "port" as const })),
+    ],
+    [flagged, portPulseRings],
+  );
+
+  // ── Paths: cheap static ambient wakes + drawing polyline ─────────────
+  // Demo vessel trajectory moved to the Arcs layer (parabolic) — see below.
+  // Ambient wakes are kept here but rendered WITHOUT animated dashes (the
+  // animated-dash shader was the previous bottleneck). Static colored lines
+  // for ~12 of 24 vessels make the ocean read as alive without per-frame
+  // shader work.
   type AnyPath =
-    | { kind: "track"; points: [number, number][]; mmsi: string }
     | { kind: "wake"; points: [number, number][]; risk: keyof typeof RISK_COLOR }
     | { kind: "draft"; pts: { lat: number; lng: number }[] };
 
-  // Sample every Nth vessel for wakes. With ~80 vessels in fleet, N=3 gives
-  // ~27 wake trails — enough to read as a busy ocean, light enough to keep
-  // the Paths layer cheap.
-  const WAKE_SAMPLE_RATE = 3;
+  const WAKE_SAMPLE_RATE = 2; // every 2nd ambient vessel → ~12 wakes from 24
 
   const pathsData: AnyPath[] = useMemo(() => {
     const out: AnyPath[] = [];
-    // Demo vessel's prominent red trajectory (Galápagos AIS gap).
-    if (trackQ.data) out.push({ kind: "track", points: trackQ.data, mmsi: DEMO_MMSI });
-    // Ambient fleet wakes — every Nth vessel, color by risk class.
     const tracks = globalTracksQ.data ?? [];
     for (let i = 0; i < tracks.length; i += WAKE_SAMPLE_RATE) {
       const v = tracks[i];
@@ -246,7 +365,7 @@ export function OverfishGlobe({
       out.push({ kind: "draft", pts: p.pts });
     }
     return out;
-  }, [trackQ.data, globalTracksQ.data, draw.drawingPathsData]);
+  }, [globalTracksQ.data, draw.drawingPathsData]);
 
   // ── Polygons (MPA + drawn region + invisible region click targets) ───
   // The "click target" entries are invisible (cap+side+stroke all transparent)
@@ -277,7 +396,10 @@ export function OverfishGlobe({
   }, [isDrawing, regionQ.data, draw.committedPolygonsData, fisheryRegionsQ.data]);
 
   // ── Heatmap ──────────────────────────────────────────────────────────
-  const heatmapsData = useMemo(() => (heatmapQ.data ? [heatmapQ.data] : []), [heatmapQ.data]);
+  const heatmapsData = useMemo(
+    () => (controls.showHeatmap && heatmapQ.data ? [heatmapQ.data] : []),
+    [heatmapQ.data, controls.showHeatmap],
+  );
 
   // ── Labels ───────────────────────────────────────────────────────────
   const labelsData = useMemo(() => {
@@ -334,7 +456,9 @@ export function OverfishGlobe({
     [isDrawing],
   );
 
-  // ── Stable path accessors — hot path, ~30 Hz invocations ─────────────
+  // ── Stable path accessors ────────────────────────────────────────────
+  // Wakes: static colored lines (no animated dash → no per-frame shader work).
+  // Draft: in-progress drawing polyline (cyan, animated for visibility).
   const pathPoints = useCallback((d: object) => {
     const p = d as AnyPath;
     if (p.kind === "draft") return p.pts.map((v) => [v.lat, v.lng]);
@@ -344,35 +468,70 @@ export function OverfishGlobe({
   const pathColor = useCallback((d: object): string[] => {
     const p = d as AnyPath;
     if (p.kind === "draft") return ["#00ffe0", "#00ffe0"];
-    if (p.kind === "track") return ["rgba(255, 31, 77, 0)", "rgba(255, 31, 77, 0.98)"];
     const c = RISK_COLOR[p.risk];
-    return [hexToRgba(c, 0), hexToRgba(c, 0.65)];
+    return [hexToRgba(c, 0), hexToRgba(c, 0.55)];
   }, []);
 
   const pathStroke = useCallback((d: object) => {
     const p = d as AnyPath;
-    if (p.kind === "draft") return 0.4;
-    if (p.kind === "track") return 0.7;
-    return 0.28;
+    return p.kind === "draft" ? 0.4 : 0.22;
   }, []);
 
+  // Wakes have NO dash animation (this was the previous bottleneck). Only
+  // the drafting polyline animates.
   const pathDashLength = useCallback((d: object) => {
     const p = d as AnyPath;
-    if (p.kind === "draft") return 0.3;
-    if (p.kind === "track") return 0.4;
-    return 0.32;
+    return p.kind === "draft" ? 0.3 : 0; // 0 = solid line, no dashes
   }, []);
 
   const pathDashAnimateTime = useCallback((d: object) => {
     const p = d as AnyPath;
-    if (p.kind === "draft") return 1500;
-    if (p.kind === "track") return 4000;
-    return 9000;
+    return p.kind === "draft" ? 1500 : 0; // 0 = no animation
   }, []);
 
   // Stable accessors for the 3D objects layer (vessels)
   const objectLat = useCallback((d: object) => (d as AnimatedVessel).lat, []);
   const objectLng = useCallback((d: object) => (d as AnimatedVessel).lng, []);
+
+  // ── Arc accessors — only demo_track + port_call now, since the dense
+  // ambient traffic moved to the InstancedMesh flight-path layer.
+  const arcColor = useCallback((d: object): string[] => {
+    const a = d as AnyArc;
+    if (a.kind === "demo_track") {
+      return ["rgba(255, 31, 77, 0.15)", "rgba(255, 31, 77, 1)"];
+    }
+    return ["rgba(255, 140, 60, 0.6)", "rgba(255, 140, 60, 1)"];
+  }, []);
+
+  const arcStroke = useCallback((d: object) => {
+    const a = d as AnyArc;
+    return a.kind === "demo_track" ? 0.7 : 0.45;
+  }, []);
+
+  const arcAltitude = useCallback((d: object) => {
+    const a = d as AnyArc;
+    return a.kind === "port_call" ? 0.001 : null;
+  }, []);
+
+  const arcDashLength = useCallback((d: object) => {
+    const a = d as AnyArc;
+    return a.kind === "demo_track" ? 0.35 : 0.25;
+  }, []);
+
+  const arcDashGap = useCallback((d: object) => {
+    const a = d as AnyArc;
+    return a.kind === "demo_track" ? 0.15 : 0.2;
+  }, []);
+
+  const arcDashInitialGap = useCallback((d: object) => {
+    const a = d as AnyArc;
+    return a.kind === "demo_track" ? 1 : 0;
+  }, []);
+
+  const arcDashAnimateTime = useCallback((d: object) => {
+    const a = d as AnyArc;
+    return a.kind === "demo_track" ? 3500 : 2000;
+  }, []);
 
   return (
     <div className="globe-host">
@@ -387,19 +546,19 @@ export function OverfishGlobe({
         pointerEventsFilter={pointerEventsFilter}
         /* Globe click (drawing) */
         onGlobeClick={({ lat, lng }) => draw.onGlobeClick({ lat, lng })}
-        /* ── Heatmap (dramatic 3D peaks for IUU hotspots) ─────── */
-        /* Tightened bandwidth so density concentrates rather than smearing
-         * across the ocean; topAltitude bumped substantially so high-risk
-         * regions rise as visible 3D mounds (matches the docs example). */
+        /* ── Heatmap (smoother gradient — perf budget) ───────── */
+        /* Wider bandwidth + lower top altitude → coarser KDE grid + fewer
+         * triangles. Trades off the dramatic 3D peaks for smoother frames
+         * during drag/zoom; risk regions still read as warm density blobs. */
         heatmapsData={heatmapsData}
         heatmapPoints={(set) => set as { lat: number; lon: number; hours: number }[]}
         heatmapPointLat="lat"
         heatmapPointLng="lon"
         heatmapPointWeight="hours"
-        heatmapBandwidth={0.85}
+        heatmapBandwidth={1.5}
         heatmapColorSaturation={2.6}
         heatmapBaseAltitude={0.01}
-        heatmapTopAltitude={0.08}
+        heatmapTopAltitude={0.04}
         heatmapsTransitionDuration={2000}
         /* ── Polygons: MPA boundary + user draw + invisible region click targets ── */
         polygonsData={polygonsData}
@@ -438,7 +597,7 @@ export function OverfishGlobe({
         onPolygonClick={handlePolygonClick}
         polygonsTransitionDuration={1200}
         /* ── Vessel meshes (3D Objects) ────────────────── */
-        objectsData={animatedVessels}
+        objectsData={controls.showVessels ? animatedVessels : []}
         objectLat={objectLat}
         objectLng={objectLng}
         objectAltitude={0.012}
@@ -463,15 +622,24 @@ export function OverfishGlobe({
           } as Vessel);
           globeRef.current?.pointOfView({ lat: v.lat, lng: v.lng, altitude: 0.4 }, 2500);
         }}
-        /* ── Pulsing rings (flagged vessel only) ───────── */
-        ringsData={flagged}
-        ringLat={objectLat}
-        ringLng={objectLng}
-        ringColor={() => (t: number) => `rgba(255, 59, 59, ${1 - t})`}
-        ringMaxRadius={4}
-        ringPropagationSpeed={2}
-        ringRepeatPeriod={700}
-        /* ── Paths (demo vessel + ambient wakes + drawing) ─ */
+        /* ── Pulsing rings (flagged vessel + port-call destinations) ───── */
+        ringsData={allRingsData}
+        ringLat={(d) => (d as { lat: number }).lat}
+        ringLng={(d) => (d as { lng: number }).lng}
+        ringColor={((d: object) => {
+          const r = d as { kind: "flagged" | "port" };
+          return r.kind === "flagged"
+            ? (t: number) => `rgba(255, 59, 59, ${1 - t})`
+            : (t: number) => `rgba(255, 140, 60, ${0.85 * (1 - t)})`;
+        }) as (d: object) => (t: number) => string}
+        ringMaxRadius={(d) => ((d as { kind: string }).kind === "port" ? 2.4 : 4)}
+        ringPropagationSpeed={(d) =>
+          (d as { kind: string }).kind === "port" ? 1.4 : 2
+        }
+        ringRepeatPeriod={(d) =>
+          (d as { kind: string }).kind === "port" ? 900 : 700
+        }
+        /* ── Paths (ambient wakes + drawing polyline) ────── */
         pathsData={pathsData}
         pathPoints={pathPoints}
         pathPointLat={(p: unknown) => (p as [number, number])[0]}
@@ -482,17 +650,24 @@ export function OverfishGlobe({
         pathDashGap={0.16}
         pathDashAnimateTime={pathDashAnimateTime}
         pathResolution={4}
-        /* ── Arcs (port-call beat) ─────────────────────── */
-        arcsData={portCallArcs}
-        arcStartLat={(d) => (d as PortCallArc).startLat}
-        arcStartLng={(d) => (d as PortCallArc).startLng}
-        arcEndLat={(d) => (d as PortCallArc).endLat}
-        arcEndLng={(d) => (d as PortCallArc).endLng}
-        arcColor={() => "#ff3b3b"}
-        arcStroke={0.5}
-        arcDashLength={0.3}
-        arcDashGap={0.2}
-        arcDashAnimateTime={2500}
+        /* ── Arcs (demo vessel parabolic trajectory + port-call surface line) ─ */
+        /* Demo trajectory lifts off the sphere as a bold parabolic arc with
+         * marching dashes — the AIS-gap "vessel went dark and reappeared
+         * here" beat. Port-call hugs the surface as a low dashed line so the
+         * two read as different actions, not the same kind of event. */
+        arcsData={arcsData}
+        arcStartLat={(d) => (d as AnyArc).startLat}
+        arcStartLng={(d) => (d as AnyArc).startLng}
+        arcEndLat={(d) => (d as AnyArc).endLat}
+        arcEndLng={(d) => (d as AnyArc).endLng}
+        arcColor={arcColor as unknown as (d: object) => string}
+        arcStroke={arcStroke}
+        arcAltitude={arcAltitude}
+        arcAltitudeAutoScale={0.5}
+        arcDashLength={arcDashLength}
+        arcDashGap={arcDashGap}
+        arcDashInitialGap={arcDashInitialGap}
+        arcDashAnimateTime={arcDashAnimateTime}
         /* ── Labels (big + region-colored, clickable for region selection) ─ */
         labelsData={labelsData}
         labelLat={(d) => (d as { lat: number }).lat}

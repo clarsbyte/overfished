@@ -15,11 +15,17 @@ env/
 .ruff_cache/
 .mypy_cache/
 
-# Node / Vite
+# Node / Vite / Next.js
 node_modules/
 dist/
 .vite/
+.next/
 *.tsbuildinfo
+
+# We use pnpm; ignore lockfiles from other package managers so accidental
+# `npm install` runs don't drop a divergent lockfile in the repo.
+frontend/package-lock.json
+frontend/yarn.lock
 
 # Generated artifacts
 backend/output/
@@ -41,6 +47,10 @@ gwf_documentation.txt
 /globe.gl.txt
 /notice_of_violation.html
 /heatmap_inspo.png
+
+# Reference clone of jeantimex/flight-path — used for reverse-engineering
+# the GPU-instanced flight-path visualization. Working-notes only.
+/flight-path-study/
 
 # Claude
 .claude/settings.local.json
