@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
 from dotenv import load_dotenv
@@ -161,6 +162,37 @@ def classify_vessel_iuu(mmsi: str, days_back: int = 365) -> str:
 
 
 @tool
+def classify_vessels_iuu_batch(mmsis: list[str], days_back: int = 365) -> str:
+    """Classify up to 6 MMSIs in parallel via threads. Pass 9-digit MMSIs verbatim
+    from check_ais_at_location or find_historical_vessels_in_region.
+
+    HARD RULE: never pass vessel names. MMSI only (9-digit) or IMO (7-digit)
+    as fallback. GFW search fuzzy-matches names and selects the wrong vessel.
+
+    Total latency ~= slowest single classification (~30-60 s) instead of N x.
+    Capped at 6 MMSIs at the code level. Returns one block per MMSI separated
+    by `=== MMSI <m> ===` headers, in the order they were submitted.
+    """
+    cleaned = [m.strip() for m in mmsis if m and m.strip()][:6]
+    if not cleaned:
+        return "No MMSIs supplied — nothing to classify."
+
+    def _one(m: str) -> tuple[str, str]:
+        try:
+            return m, classify_vessel(m, days_back)
+        except Exception as exc:
+            return m, f"GFW IUU classification failed for MMSI={m}: {exc!s}"
+
+    results: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=len(cleaned)) as pool:
+        futures = [pool.submit(_one, m) for m in cleaned]
+        for fut in as_completed(futures):
+            mmsi, verdict = fut.result()
+            results[mmsi] = verdict
+    return "\n\n".join(f"=== MMSI {m} ===\n{results[m]}" for m in cleaned)
+
+
+@tool
 def find_dark_targets_in_region(
     latitude: float,
     longitude: float,
@@ -258,20 +290,22 @@ Compute the dark-target gap from turn 1's results:
 Turn 2 — branch on AIS results:
   CASE A: check_ais_at_location returned MMSIs.
     Pick the top 6 closest (the AIS output is already distance-ordered).
-    Call classify_vessel_iuu(mmsi=<...>) ONCE PER MMSI in a single turn so
-    they execute in parallel.
+    Call classify_vessels_iuu_batch(mmsis=[<m1>, <m2>, ..., <m6>]) ONCE with
+    the top 6 MMSIs as a list. The tool fans them out to threads internally,
+    so latency ~= slowest single classification, not 6x. Do NOT emit multiple
+    classify_vessel_iuu tool calls — the batch tool replaces that pattern.
 
   CASE B: AIS_STATUS: silent (zero vessels broadcasting).
     This is itself a red flag. Call find_historical_vessels_in_region(...).
-    Then call classify_vessel_iuu(mmsi=<...>) for the top 6 MMSIs returned,
-    again in parallel in one turn.
+    Then call classify_vessels_iuu_batch(mmsis=[<...>]) ONCE with the top 6
+    MMSIs returned. Same threading semantics as CASE A.
 
 Turn 3 — synthesize the evidence document.
 
 HARD RULES:
-- Pass MMSIs verbatim to classify_vessel_iuu. Never pass a vessel name; GFW
-  search fuzzy-matches names and returns wrong vessels.
-- Cap classify_vessel_iuu calls at 6 per pipeline run.
+- Pass MMSIs verbatim to classify_vessels_iuu_batch. Never pass a vessel name;
+  GFW search fuzzy-matches names and returns wrong vessels.
+- Cap MMSIs in classify_vessels_iuu_batch at 6 per pipeline run.
 - Never invent rules. If lookup_regional_laws returns INSUFFICIENT_DATA, say so.
 - Every legal claim in the synthesis must cite source_url + last_checked from
   the regional dossier output.
@@ -346,11 +380,12 @@ def build_supervisor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         check_ais_at_location,
         find_dark_targets_in_region,
         lookup_regional_laws,
+        classify_vessels_iuu_batch,
         classify_vessel_iuu,
         find_historical_vessels_in_region,
     ]
     agent = create_tool_calling_agent(llm, tools, prompt)
-    return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=8)
+    return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
 
 
 def _unwrap_output(out) -> str:
