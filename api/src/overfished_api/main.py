@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()  # Must run before routers are imported so module-level env vars resolve
 
-from overfished_api.routers import agent, comms, health, regions, vessels
+from overfished_api.routers import agent, comms, health, regions, sequence, vessels
 
 
 def create_app() -> FastAPI:
@@ -21,6 +21,7 @@ def create_app() -> FastAPI:
     app.include_router(regions.router)
     app.include_router(vessels.router)
     app.include_router(agent.router)
+    app.include_router(sequence.router)
     app.include_router(comms.router)
     return app
 
