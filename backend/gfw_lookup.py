@@ -187,3 +187,179 @@ def get_vessel_events(
     )
     resp.raise_for_status()
     return resp.json().get("entries", [])
+
+
+def get_events_in_region(
+    bbox: tuple[float, float, float, float],
+    event_type: str = "FISHING",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Query GFW Events for events of `event_type` whose position falls in `bbox`.
+
+    `bbox` is (lat_min, lon_min, lat_max, lon_max). Returns the same event-dict
+    shape as `get_vessel_events`, so each entry exposes `vessel.ssvid` (MMSI)
+    plus `start`, `end`, `position`. Used by the pipeline as the AIS-silent
+    fallback to surface vessels that GFW saw active in a region even when
+    AISStream is silent.
+    """
+    if event_type not in EVENT_DATASETS:
+        raise ValueError(
+            f"Unknown event type {event_type!r}; expected one of {list(EVENT_DATASETS)}"
+        )
+    lat_min, lon_min, lat_max, lon_max = bbox
+    polygon = {
+        "type": "Polygon",
+        "coordinates": [[
+            [lon_min, lat_min],
+            [lon_max, lat_min],
+            [lon_max, lat_max],
+            [lon_min, lat_max],
+            [lon_min, lat_min],
+        ]],
+    }
+    body = {
+        "datasets": [EVENT_DATASETS[event_type]],
+        "startDate": start_date,
+        "endDate": end_date,
+        "geometry": polygon,
+    }
+    params = {"limit": limit, "offset": 0}
+    resp = requests.post(
+        f"{BASE_URL}/events",
+        params=params,
+        json=body,
+        headers=_headers(),
+        timeout=90,
+    )
+    resp.raise_for_status()
+    return resp.json().get("entries", [])
+
+
+def extract_mmsi(event: dict[str, Any]) -> str | None:
+    """Pull the MMSI from a GFW event entry. Shape varies slightly across endpoints."""
+    vessel = event.get("vessel") or {}
+    return (
+        vessel.get("ssvid")
+        or vessel.get("mmsi")
+        or event.get("ssvid")
+        or event.get("mmsi")
+    )
+
+
+SAR_DATASET = "public-global-sar-presence:latest"
+
+
+def get_sar_detections_in_region(
+    bbox: tuple[float, float, float, float],
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """Query GFW 4Wings for SAR (Sentinel-1 satellite radar) vessel detections in a bbox.
+
+    `bbox` is (lat_min, lon_min, lat_max, lon_max). Returns the raw 4Wings
+    report payload — typically `{"entries": [{"datasetId": ..., "value": <count>}]}`
+    or a similar aggregated form.
+
+    SAR detects vessels by radar reflection regardless of whether they broadcast
+    AIS, so this is the path to find AIS-dark vessels. The response carries no
+    MMSI/identity — SAR can't capture broadcasts. Cross-reference the count
+    with the AIS-broadcast count from vessel_lookup to identify dark targets.
+    """
+    lat_min, lon_min, lat_max, lon_max = bbox
+    polygon = {
+        "type": "Polygon",
+        "coordinates": [[
+            [lon_min, lat_min],
+            [lon_max, lat_min],
+            [lon_max, lat_max],
+            [lon_min, lat_max],
+            [lon_min, lat_min],
+        ]],
+    }
+    body = {
+        "geojson": {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": polygon,
+                    "properties": {},
+                }
+            ],
+        }
+    }
+    params = [
+        ("datasets[0]", SAR_DATASET),
+        ("date-range", f"{start_date},{end_date}"),
+        ("format", "JSON"),
+        ("spatial-resolution", "LOW"),
+        ("temporal-resolution", "ENTIRE"),
+        # Exclude vessels GFW's neural net classifies as "Likely non-fishing"
+        # (≤0.1). The column is stored as a string in GFW's ClickHouse, so we
+        # cast — `toFloat64OrZero` returns 0 on empty/non-numeric, which the
+        # ≥0.1 threshold then filters out. Result: only fishing-likely or
+        # other/unknown detections are counted; cargo, ferries, yachts dropped.
+        ("filters[0]", "toFloat64OrZero(neural_vessel_type)>=0.1"),
+    ]
+    resp = requests.post(
+        f"{BASE_URL}/4wings/report",
+        params=params,
+        json=body,
+        headers=_headers(),
+        timeout=90,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def sar_detection_count(payload: dict[str, Any]) -> int | None:
+    """Best-effort extract a single integer count from a 4Wings SAR report.
+
+    Handles several GFW response shapes:
+    - `{"entries": [{"public-global-sar-presence:v4.0": <N or null>}]}` — versioned key
+    - `{"entries": [{"value": N}]}` — named key
+    - `{"total": N}` — top-level total
+    Returns 0 when entries exist but all values are null (confirmed zero detections).
+    Returns None only when the shape is completely unrecognised.
+    """
+    if not payload:
+        return None
+
+    # Top-level shortcut keys
+    for key in ("value", "count", "detections"):
+        v = payload.get(key)
+        if isinstance(v, (int, float)):
+            return int(v)
+
+    entries = payload.get("entries")
+    if isinstance(entries, list) and entries:
+        total = 0
+        has_any_entry = False
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            has_any_entry = True
+            # Try well-known scalar keys first
+            for k in ("value", "count", "detections", "hours"):
+                v = entry.get(k)
+                if isinstance(v, (int, float)):
+                    total += int(v)
+                    break
+            else:
+                # Fall back to any numeric value in the dict (handles versioned-key shape)
+                for v in entry.values():
+                    if isinstance(v, (int, float)):
+                        total += int(v)
+                        break
+        if has_any_entry:
+            return total  # 0 means confirmed zero detections (all null)
+
+    # Last resort: top-level "total" (GFW uses this for record counts, not detection counts,
+    # but better than returning None when shape is otherwise empty)
+    total_v = payload.get("total")
+    if isinstance(total_v, (int, float)):
+        return int(total_v)
+
+    return None
