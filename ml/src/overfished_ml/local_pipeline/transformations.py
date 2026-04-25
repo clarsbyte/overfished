@@ -58,8 +58,9 @@ def silver_fishing_events(spark: SparkSession, input_path: str, output_path: str
         )
         .withColumn(
             "is_high_risk",
-            F.when((F.col("potential_risk") == True) & (F.col("distance_from_shore_km") > 200), True)
-            .otherwise(False),
+            F.when(F.col("potential_risk") & (F.col("distance_from_shore_km") > 200), True).otherwise(
+                False
+            ),
         )
     )
     df.write.mode("overwrite").parquet(output_path)
@@ -86,10 +87,8 @@ def gold_fishing_features(spark: SparkSession, input_path: str, output_path: str
             F.min("distance_from_shore_km").alias("min_distance_from_shore_km"),
             F.max("distance_from_shore_km").alias("max_distance_from_shore_km"),
             F.avg("distance_from_port_km").alias("avg_distance_from_port_km"),
-            F.sum(F.when(F.col("potential_risk") == True, 1).otherwise(0)).alias(
-                "potential_risk_events"
-            ),
-            F.sum(F.when(F.col("is_high_risk") == True, 1).otherwise(0)).alias("high_risk_events"),
+            F.sum(F.when(F.col("potential_risk"), 1).otherwise(0)).alias("potential_risk_events"),
+            F.sum(F.when(F.col("is_high_risk"), 1).otherwise(0)).alias("high_risk_events"),
             F.max(F.col("is_high_risk").cast("int")).alias("has_high_risk_flag"),
             F.collect_set("eez_regions").alias("eez_regions_visited"),
             F.collect_set("rfmo_regions").alias("rfmo_regions_visited"),

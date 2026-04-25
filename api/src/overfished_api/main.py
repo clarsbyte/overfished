@@ -3,6 +3,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()  # Must run before routers are imported so module-level env vars resolve
@@ -12,6 +13,14 @@ from overfished_api.routers import agent, comms, health, regions, sequence, vess
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Overfished API", version="0.1.0")
+
+    # Same-origin in dev via Vite proxy; permissive CORS helps direct :8001 browser calls / tools.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     audio_dir = Path(os.getenv("AUDIO_OUTPUT_DIR", "audio_output"))
     audio_dir.mkdir(parents=True, exist_ok=True)

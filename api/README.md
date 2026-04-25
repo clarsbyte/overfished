@@ -1,8 +1,11 @@
 # overfished-api
 
-FastAPI BFF for the Overfish AI vessel-monitoring stack. The frontend talks
-to this API; this API talks to the backend agents (`../backend/`) and to
-external services (Twilio, ElevenLabs, GFW, AISStream, Anthropic).
+FastAPI **BFF** (agents, sequence ML, `POST /comms/call`). The Vite frontend
+proxies **`/agentapi` → this app on port 8001** (see `frontend/vite.config.ts`).
+
+The **demo REST API** (vessels, heatmap, species exposure, Twilio *AI-call*
+webhooks, case notify-port) runs separately: `../backend/api/main.py` on
+**port 8000**, proxied as `/api` from the same Vite dev server.
 
 Install:
 ```
@@ -17,9 +20,19 @@ pip install -e ../ml
 pip install -e ".[ml]"
 ```
 
-Run: `uvicorn overfished_api.main:app --reload --port 8000`
+Run (match Vite’s `/agentapi` proxy):
 
-OpenAPI docs render at `http://localhost:8000/docs`.
+```bash
+uvicorn overfished_api.main:app --reload --host 0.0.0.0 --port 8001
+```
+
+OpenAPI docs: `http://localhost:8001/docs`.
+
+**Local dev (both servers + UI):** from repo root, in three terminals:
+
+1. `cd backend && USE_FIXTURES=1 uvicorn api.main:app --reload --port 8000`
+2. `cd api && uvicorn overfished_api.main:app --reload --host 0.0.0.0 --port 8001`
+3. `cd frontend && npm install && npm run dev`
 
 ## Agent backend modes (`/agent/run`)
 
@@ -68,9 +81,14 @@ For legal-action orchestration via existing backend PDF pipeline, call
 | POST   | `/agent/law` | Citation-backed legal dossier. |
 | POST   | `/agent/complete` | Full multi-agent vessel-incursion pipeline. |
 | POST   | `/comms/call` | Pre-rendered ElevenLabs MP3 + Twilio playback. |
-| POST   | `/comms/ai-call` | Claude-Haiku conversational call grounded in a case PDF. |
-| POST   | `/twilio/voice/start` | Twilio webhook (internal — TwiML for call connect). |
-| POST   | `/twilio/voice/respond` | Twilio webhook (internal — TwiML per user speech turn). |
+
+**Not on this BFF** (implemented on the demo REST app `backend/api/main.py`, port 8000):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST   | `/case/{case_id}/ai-call` | Claude-Haiku conversational call (see backend routes). |
+| POST   | `/twilio/voice/start` | Twilio webhook — TwiML for call connect. |
+| POST   | `/twilio/voice/respond` | Twilio webhook — TwiML per speech turn. |
 
 ## Agent endpoints
 
@@ -110,7 +128,7 @@ Two flows:
 
   Returns `{ "status": "calling", "message": ..., "audio_url": ..., "call_sid": ... }`.
 
-- **`POST /comms/ai-call`** — Claude-Haiku-powered dialog. The vessel hears
+- **`POST /case/{case_id}/ai-call`** (demo REST backend, port 8000) — Claude-Haiku-powered dialog. The vessel hears
   a fixed warning ("Warning. Ship NAME is at high risk of illegal
   fishing.") and is then handed to Claude, which answers questions
   strictly from the case's evidence PDF
@@ -153,10 +171,10 @@ Two flows:
   }
   ```
 
-### Twilio webhooks (internal)
+### Twilio webhooks (internal, demo REST backend)
 
-`/twilio/voice/start` and `/twilio/voice/respond` exist for Twilio to call
-during an active `/comms/ai-call` — **not** for direct frontend use. They
+On **port 8000**, `/twilio/voice/start` and `/twilio/voice/respond` exist for Twilio to call
+during an active AI-call flow — **not** for direct frontend use. They
 return TwiML (XML) and parse Twilio's `application/x-www-form-urlencoded`
 webhook bodies. Conversation state is held in-memory in
 `backend/comms_lookup.py` (`_CALL_SESSIONS`, keyed by Twilio CallSid).
@@ -178,14 +196,14 @@ Set in `backend/.env`:
 
 | Variable | Used by |
 |---|---|
-| `ANTHROPIC_API_KEY` | `/agent/*`, `/comms/ai-call` |
+| `ANTHROPIC_API_KEY` | `/agent/*` (BFF); AI-call flow on demo REST backend also uses it |
 | `GFW_API_ACCESS_TOKEN` | `/agent/gfw`, `/agent/complete` |
 | `AISSTREAM_API_KEY` | `/agent/vessel`, `/agent/complete` |
 | `ELEVENLABS_API_KEY` | `/comms/call` |
-| `TWILIO_ACCOUNT_SID` | `/comms/call`, `/comms/ai-call` |
-| `TWILIO_AUTH_TOKEN` | `/comms/call`, `/comms/ai-call` |
-| `TWILIO_FROM_NUMBER` | `/comms/call`, `/comms/ai-call` |
-| `PUBLIC_BASE_URL` | optional default for `/comms/ai-call` |
+| `TWILIO_ACCOUNT_SID` | `/comms/call` (BFF); AI-call on demo REST backend |
+| `TWILIO_AUTH_TOKEN` | `/comms/call` (BFF); AI-call on demo REST backend |
+| `TWILIO_FROM_NUMBER` | `/comms/call` (BFF); AI-call on demo REST backend |
+| `PUBLIC_BASE_URL` | optional default for AI-call on demo REST backend |
 
 ## Conventions
 
@@ -199,6 +217,51 @@ Set in `backend/.env`:
 - **Backend imports are lazy** inside route handlers. The API still boots
   if a backend module has missing deps; the failure surfaces only when its
   endpoint is called (as a 500 with the import error text).
-- **CORS** is wide-open in dev — locked down before any hosted deploy.
+- **CORS** on this BFF uses permissive settings for local tooling; tighten before any hosted deploy. The demo REST backend (`../backend/api/main.py`) also uses wide-open CORS in dev.
 
 See the repository [README.md](../README.md) for vision, RACI, and env vars.
+
+## Vessel image cards (offline pipeline)
+
+The right-side `VesselDetailPanel` in the frontend reads a single static
+JSON file (`/data/vessel_cards.json`) plus per-vessel JPGs at
+`/data/vessel_images/<mmsi>.jpg`. Both are produced once by an offline
+pipeline so clicking a vessel never makes a live remote call.
+
+```bash
+# from repo root, using the same Python env as ml/
+pip install -e ./ml
+
+# free path (Wikimedia Commons fallback only)
+python -m overfished_ml.image_enrichment.build_all --use-commons-fallback
+
+# with MarineTraffic key + 1-line LLM summaries
+ANTHROPIC_API_KEY=... MARINETRAFFIC_API_KEY=... \
+  python -m overfished_ml.image_enrichment.build_all --with-summaries
+
+# force re-download
+python -m overfished_ml.image_enrichment.build_all --refresh
+```
+
+Outputs (exposed at `frontend/public/data` when `npm run dev` / `npm run build`
+runs `scripts/link-data.mjs`, which symlinks to `data/local_pipeline/`; use
+`SKIP_DATA_LINK=1` in CI if that directory is absent):
+
+- `data/local_pipeline/vessel_image_cache.json` — `mmsi -> URL`
+- `data/local_pipeline/vessel_images/<mmsi>.jpg` — resized to ≤1024px, q=85
+- `data/local_pipeline/vessel_cards.json` — frontend-ready cards
+- `data/local_pipeline/vessel_image_download_errors.json` — failed downloads
+
+### Run on the DGX (gx10) and rsync the artifacts back
+
+```bash
+ssh asus@gx10-eb94 'cd ~/overfished && \
+  python -m overfished_ml.image_enrichment.build_all --use-commons-fallback --with-summaries'
+rsync -a asus@gx10-eb94:~/overfished/data/local_pipeline/vessel_images \
+       data/local_pipeline/
+rsync   asus@gx10-eb94:~/overfished/data/local_pipeline/vessel_cards.json \
+        data/local_pipeline/
+```
+
+The frontend symlink picks them up on the next page refresh — no rebuild
+required.

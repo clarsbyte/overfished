@@ -18,8 +18,9 @@ Surface illegal or high-risk fishing using vessel activity, regional regulations
 
 | Layer | Location | Role |
 |-------|----------|------|
-| Presentation | [frontend/](frontend/) | Next.js UI; calls the BFF over HTTP only. |
-| API (BFF) | [api/](api/) | FastAPI routes, OpenAPI, DI; **no** embedded business logic in this scaffold. |
+| Presentation | [frontend/](frontend/) | Vite + React; proxies `/api` and `/agentapi` in dev (see `frontend/vite.config.ts`). |
+| API (BFF) | [api/](api/) | FastAPI agents + sequence + `POST /comms/call` (default local port **8001**). |
+| Demo REST | [backend/api/](backend/api/) | Vessels, heatmap, species, Twilio AI-call webhooks (default **8000**). |
 | ML library | [ml/](ml/) | Local-first medallion ETL + sequence/CV modules; can run without Databricks. |
 | Agent plugins (optional) | [plugins/langchain_plugin/](plugins/langchain_plugin/), [plugins/fetch_plugin/](plugins/fetch_plugin/) | LangChain and/or Fetch-style orchestration behind `AgentBackend`. |
 | Databricks (optional) | [databricks/](databricks/) | Jobs, notebooks, MLflow / Unity Catalog when cloud orchestration is needed. |
@@ -29,8 +30,9 @@ Architecture detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Repository layout
 
 ```text
-frontend/                 Next.js app
+frontend/                 Vite + React app
 api/                      FastAPI BFF (routers + ports + deps)
+backend/api/              Demo REST API for map + fixtures
 ml/                       Local-first ML package (pipeline + sequence/CV modules)
 plugins/langchain_plugin/ Optional LangChain implementation of AgentBackend
 plugins/fetch_plugin/     Optional Fetch.ai-style implementation of AgentBackend
@@ -48,7 +50,10 @@ Set these in deployment or `.env` for the API (see [api/](api/) when running loc
 | `FETCH_AGENT_ENABLED` | API hybrid/fetch | Toggle Fetch path in hybrid mode (`true`/`false`). |
 | `FETCH_AGENT_TIMEOUT_SECONDS` | API hybrid/fetch | Timeout budget for Fetch attempt before fallback. |
 | `FETCH_AGENT_MAX_RETRIES` | API hybrid/fetch | Bounded retry attempts before fallback. |
-| `NEXT_PUBLIC_API_BASE_URL` | Frontend | Base URL for BFF requests. |
+| `VITE_API_URL` | Frontend | Demo REST base (empty = `/api` Vite proxy → :8000). |
+| `VITE_AGENT_API_URL` | Frontend | BFF base (empty = `/agentapi` proxy → :8001). |
+| `MAP_BOX_TOKEN` | Frontend | Mapbox GL token (repo-root `.env` with Vite `envDir`, or `frontend/.env`). |
+| `SKIP_DATA_LINK` | Frontend `predev` / `prebuild` | Set `1` to skip `public/data` symlink when `data/local_pipeline` is missing (e.g. CI). |
 | `DATABRICKS_HOST` | Databricks CLI / jobs | Workspace host. |
 | `DATABRICKS_TOKEN` | Databricks CLI / jobs | PAT (never commit). |
 | `MLFLOW_TRACKING_URI` | ML jobs (optional) | Experiment tracking. |
@@ -61,18 +66,29 @@ Set these in deployment or `.env` for the API (see [api/](api/) when running loc
 
 ## Install and run (scaffold)
 
-**Frontend**
+**Frontend** (expects both backends below if you use agents + map data APIs)
 
 ```bash
 cd frontend && npm install && npm run dev
 ```
 
-**API**
+`predev` runs `link-data.mjs` (symlink `public/data` → `data/local_pipeline`) and TypeScript codegen from `backend/tools/schemas.py`. Use `SKIP_DATA_LINK=1` when that folder is absent.
+
+**Demo REST API** (vessels, heatmap, species, Twilio case flows)
+
+```bash
+cd backend && pip install -r requirements.txt
+USE_FIXTURES=1 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**BFF** (LangChain agents, sequence routes, `POST /comms/call`)
 
 ```bash
 cd api && pip install -e ".[dev]"
-uvicorn overfished_api.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn overfished_api.main:app --reload --host 0.0.0.0 --port 8001
 ```
+
+See [api/README.md](api/README.md) for env vars and endpoint tables.
 
 **Optional LangChain plugin**
 
@@ -107,7 +123,7 @@ falls back deterministically if Fetch times out/errors.
 
 **Sequence model (RNN + BiLSTM) and “sus” ships (optional)**
 
-Install the ML package into the **same** venv the API uses, then restart uvicorn:
+Install the ML package into the **same** venv as the BFF, then restart the BFF on **8001**:
 
 ```bash
 # from repo root, with .venv active
@@ -115,7 +131,7 @@ pip install -e "./ml[dev]"   # torch + overfished_ml; see [ml/README.md](ml/)
 ```
 
 - **HTTP demo (browser or curl, ~10–20s first time):**  
-  [http://127.0.0.1:8000/ml/sequence/demo](http://127.0.0.1:8000/ml/sequence/demo)  
+  [http://127.0.0.1:8001/ml/sequence/demo](http://127.0.0.1:8001/ml/sequence/demo)  
   Returns JSON with soft per-class scores, a short `narration`, and a `suspect_readout` of MMSI windows where the ensemble is uncertain or disagrees with the label (triage / demo only).
 
 - **Agent (`fetch` / `hybrid`):** ask for suspicious / sus vessels or the sequence model; the Fetch plugin runs the same report. Example body for `POST /agent/run`:

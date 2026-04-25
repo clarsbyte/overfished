@@ -1,4 +1,10 @@
-"""GX10 helpers: sync, remote image enrich, pull artifacts. Env: GX10_HOST, GX10_USER, GX10_REMOTE_WORKDIR."""
+"""GX10 helpers: sync, remote image enrich, pull artifacts. Env: GX10_HOST, GX10_USER, GX10_REMOTE_WORKDIR.
+
+Aerial ship JPEGs (from ``archive.zip`` → ``data/datasets/ships-aerial-images/``) are assigned
+with ``overfished-assign-aerial`` (see ``overfished_ml.image_enrichment.assign_aerial_pool``).
+Rsync a zip or extracted tree via ``GX10_SYNC_EXTRA=archive.zip`` (comma-separated paths) on sync.
+``pull`` includes ``vessel_images/`` and ``vessel_cards.json`` by default.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +44,7 @@ def main() -> int:
     p.add_argument(
         "command",
         choices=["sync", "enrich", "pull"],
-        help="sync: push ml+data; enrich: run overfished-enrich-images on host; pull: rsync outputs/cache back",
+        help="sync: push ml+data; enrich: run overfished-enrich-images on host; pull: rsync outputs/cache/images/cards back",
     )
     p.add_argument(
         "--minimal-data",

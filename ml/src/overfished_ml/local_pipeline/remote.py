@@ -44,7 +44,6 @@ def sync_project_subset_to_gx10(
     (files or directories) after the main sync.
     """
     work = config.remote_workdir.rstrip("/")
-    remote_dir = f"{_ssh_target(config)}:{work}/"
     for name in ("ml",):
         local = repo_root / name
         if not local.is_dir():
@@ -168,6 +167,8 @@ def pull_gx10_artifacts(
         "data/local_pipeline/output",
         "data/local_pipeline/vessel_image_cache.json",
         "data/local_pipeline/vessel_image_misses.json",
+        "data/local_pipeline/vessel_cards.json",
+        "data/local_pipeline/vessel_images",
         "data/gold_vessel_detections_enriched.csv",
     ]
     to_pull = relpaths or default

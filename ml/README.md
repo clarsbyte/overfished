@@ -48,33 +48,110 @@ Default outputs:
 
 ### Run on ASUS Ascent GX10 (optional over SSH)
 
-Set:
+Install CLIs once (from `ml/`):
+
+```bash
+pip install -e ".[dev]"
+```
+
+#### Environment variables (laptop)
 
 ```bash
 export GX10_HOST=<host-or-ip>
 export GX10_USER=<ssh-user>
-export GX10_REMOTE_WORKDIR=<remote-dir>
-export GX10_SSH_PORT=22              # optional
-export GX10_SSH_KEY_PATH=~/.ssh/id_rsa  # optional
+export GX10_REMOTE_WORKDIR=<remote-abs-path>   # e.g. /home/you/overfished
+export GX10_SSH_PORT=22                        # optional
+export GX10_SSH_KEY_PATH=~/.ssh/id_rsa         # optional
+export GX10_REMOTE_PYTHON=python3              # optional
 ```
 
-Then run:
+Optional: comma-separated **repo-relative** extra paths to rsync after the main sync (e.g. `archive.zip` at repo root):
+
+```bash
+export GX10_SYNC_EXTRA=archive.zip
+```
+
+#### 1. Push `ml/` and data to GX10
+
+Full `data/` tree (run from any directory; paths are resolved from the editable install):
+
+```bash
+overfished-gx10 sync
+```
+
+Only `data/local_pipeline/` (smaller; excludes top-level `data/*.csv` unless synced separately):
+
+```bash
+overfished-gx10 sync --minimal-data
+```
+
+`GX10_SYNC_EXTRA` is applied after the main rsync (see `overfished_ml.local_pipeline.remote.sync_project_subset_to_gx10`).
+
+#### 2. Spark medallion pipeline on GX10
+
+Rsyncs when you pass `--sync-gx10`, then runs PySpark with **cwd = repo root** on GX10:
 
 ```bash
 overfished-pipeline --runtime gx10 --sync-gx10
 ```
 
-This rsyncs `ml/` and the full `data/` tree to `GX10_REMOTE_WORKDIR` (mirroring the repo), then runs the pipeline with **cwd = repo root** on GX10 (fixes path layout). Use `--gx10-minimal-data-sync` for only `data/local_pipeline/`.
+Add `--gx10-minimal-data-sync` with `--sync-gx10` if you only synced `data/local_pipeline/`.
 
-Large CSV tuning (also applies to local runs): set `SPARK_SHUFFLE_PARTITIONS`, `SPARK_DRIVER_MEMORY`, `OVERFISH_SPARK_SHUFFLE_PARTITIONS`, etc.; CLI `--spark-*` overrides.
+Large CSV tuning (local or GX10): set `SPARK_SHUFFLE_PARTITIONS`, `SPARK_DRIVER_MEMORY`, `OVERFISH_SPARK_SHUFFLE_PARTITIONS`, etc.; CLI `--spark-*` overrides.
 
-**Remote image enrichment** (HTTP + cache, not Spark):
+#### 3. Remote vessel image URL enrichment (HTTP + cache, not Spark)
 
 ```bash
 overfished-gx10 sync
 overfished-gx10 enrich
 overfished-gx10 pull
 ```
+
+#### 4. Aerial ship JPEGs from `archive.zip` (on GX10)
+
+Unzip once on the **remote** (paths relative to `GX10_REMOTE_WORKDIR`):
+
+```bash
+ssh -p "${GX10_SSH_PORT:-22}" "${GX10_USER}@${GX10_HOST}"
+cd "$GX10_REMOTE_WORKDIR"
+mkdir -p data/datasets
+unzip -q -o archive.zip -d data/datasets
+# → data/datasets/ships-aerial-images/{train,valid,test}/images/*.jpg
+exit
+```
+
+Assign random aerial crops per MMSI, write `data/local_pipeline/vessel_images/{mmsi}.jpg`, strip those MMSIs from `vessel_image_cache.json`, rebuild `vessel_cards.json`:
+
+```bash
+ssh "${GX10_USER}@${GX10_HOST}" "cd ${GX10_REMOTE_WORKDIR} && overfished-assign-aerial \
+  --aerial-root data/datasets/ships-aerial-images \
+  --seed 42 \
+  --clean"
+```
+
+Defaults: `--input-csv data/local_pipeline/gold_vessel_detections_enriched.csv`, `--image-dir data/local_pipeline/vessel_images`, `--cache-path data/local_pipeline/vessel_image_cache.json`, `--cards-output data/local_pipeline/vessel_cards.json`.
+
+#### 5. Pull artifacts back to the laptop
+
+```bash
+overfished-gx10 pull
+```
+
+Default pull set includes `data/local_pipeline/vessel_images/`, `vessel_cards.json`, caches, gold CSV, etc. (see `pull_gx10_artifacts` in `overfished_ml.local_pipeline.remote`).
+
+#### 6. Frontend (symlink static data)
+
+From repo root:
+
+```bash
+cd frontend && node scripts/link-data.mjs && pnpm dev
+```
+
+#### One-liner “happy path” (aerial-only)
+
+Set `GX10_*`, then from repo root: `GX10_SYNC_EXTRA=archive.zip overfished-gx10 sync --minimal-data` → SSH unzip (step 4) → SSH `overfished-assign-aerial ...` → `overfished-gx10 pull` → `node frontend/scripts/link-data.mjs` → dev server.
+
+**Note:** `overfished-gx10 enrich` is separate from `overfished-assign-aerial` (URLs vs local JPEG pool). Sequence / Torch CLIs are not wired to GX10; only Spark pipeline, image URL enrichment, and jobs you SSH to run (e.g. assign-aerial).
 
 ### Data policy
 

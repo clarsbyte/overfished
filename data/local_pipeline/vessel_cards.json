@@ -1,0 +1,102 @@
+{
+  "231053000": {
+    "duration_hours": 190.12,
+    "flag": "FRO",
+    "image_path": "/data/vessel_images/231053000.jpg",
+    "is_high_risk": false,
+    "mmsi": "231053000",
+    "name": "ARCTIC VIKING",
+    "risk": "safe",
+    "vessel_type": "fishing"
+  },
+  "244373000": {
+    "duration_hours": 170.86,
+    "flag": "NLD",
+    "image_path": "/data/vessel_images/244373000.jpg",
+    "is_high_risk": true,
+    "mmsi": "244373000",
+    "name": "MDV2 METANOIA",
+    "risk": "high_risk",
+    "vessel_type": "fishing"
+  },
+  "250103600": {
+    "duration_hours": 179.95,
+    "flag": "IRL",
+    "image_path": "/data/vessel_images/250103600.jpg",
+    "is_high_risk": true,
+    "mmsi": "250103600",
+    "name": "CISEMAIR",
+    "risk": "high_risk",
+    "vessel_type": "fishing"
+  },
+  "412217999": {
+    "duration_hours": 327.13,
+    "flag": "CHN",
+    "image_path": "/data/vessel_images/412217999.jpg",
+    "is_high_risk": false,
+    "mmsi": "412217999",
+    "name": "FU XING HAI",
+    "risk": "safe",
+    "vessel_type": "fishing"
+  },
+  "412287951": {
+    "duration_hours": 226.54,
+    "flag": "CHN",
+    "image_path": "/data/vessel_images/412287951.jpg",
+    "is_high_risk": true,
+    "mmsi": "412287951",
+    "name": "JIHUANGYU02992",
+    "risk": "high_risk",
+    "vessel_type": "fishing"
+  },
+  "412327202": {
+    "duration_hours": 189.01,
+    "flag": "CHN",
+    "image_path": "/data/vessel_images/412327202.jpg",
+    "is_high_risk": true,
+    "mmsi": "412327202",
+    "name": "LUDONGGANGYU61975",
+    "risk": "high_risk",
+    "vessel_type": "fishing"
+  },
+  "412423968": {
+    "duration_hours": 261.73,
+    "flag": "CHN",
+    "image_path": "/data/vessel_images/412423968.jpg",
+    "is_high_risk": true,
+    "mmsi": "412423968",
+    "name": "ZHEPUYU68602",
+    "risk": "high_risk",
+    "vessel_type": "fishing"
+  },
+  "412500991": {
+    "duration_hours": 267.69,
+    "flag": "CHN",
+    "image_path": "/data/vessel_images/412500991.jpg",
+    "is_high_risk": true,
+    "mmsi": "412500991",
+    "name": "GUIHEYU80868",
+    "risk": "high_risk",
+    "vessel_type": "fishing"
+  },
+  "432448000": {
+    "duration_hours": 305.55,
+    "flag": "JPN",
+    "image_path": "/data/vessel_images/432448000.jpg",
+    "is_high_risk": false,
+    "mmsi": "432448000",
+    "name": "SHOEIMARU NO.1",
+    "risk": "safe",
+    "vessel_type": "fishing"
+  },
+  "657265600": {
+    "duration_hours": 228.16,
+    "flag": "NGA",
+    "image_path": "/data/vessel_images/657265600.jpg",
+    "is_high_risk": true,
+    "mmsi": "657265600",
+    "name": "BANARLY X",
+    "risk": "high_risk",
+    "vessel_type": "fishing"
+  }
+}

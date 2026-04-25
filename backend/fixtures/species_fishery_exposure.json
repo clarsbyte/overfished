@@ -1,0 +1,68 @@
+{
+  "cod": [
+    {
+      "region_id": "grand-banks",
+      "species_note": "Historic Atlantic cod grounds; demo ties high longline/trawl IUU pressure to this shelf."
+    },
+    {
+      "region_id": "north-sea",
+      "species_note": "Mixed demersal fisheries; illustrative overlap with transshipment and quota evasion narratives."
+    },
+    {
+      "region_id": "icelandic-eez",
+      "species_note": "Arctic-Atlantic cod migration edges; demo uses region IUU label only."
+    },
+    {
+      "region_id": "barents-sea",
+      "species_note": "Northeast Arctic cod adjacent fisheries; same demo risk as polygon, not stock status."
+    },
+    {
+      "region_id": "scotian-shelf",
+      "species_note": "Western Atlantic cod-related effort; showcase linkage to shelf IUU-style risk."
+    },
+    {
+      "region_id": "new-england",
+      "species_note": "Georges Bank / New England grounds; demo illustrative only."
+    }
+  ],
+  "salmon": [
+    {
+      "region_id": "bering-sea",
+      "species_note": "Pacific salmon migration and high-seas interception narratives (demo IUU pressure on polygon)."
+    },
+    {
+      "region_id": "okhotsk",
+      "species_note": "Russian Far East salmon fisheries context; uses fixture risk only."
+    },
+    {
+      "region_id": "sea-of-japan",
+      "species_note": "East Asian salmon-related coastal fisheries; illustrative."
+    },
+    {
+      "region_id": "north-sea",
+      "species_note": "Atlantic salmon sea-run / mixed fisheries near Europe; not a biological range map."
+    },
+    {
+      "region_id": "scotian-shelf",
+      "species_note": "Northwest Atlantic salmon returns; demo linkage to shelf risk label."
+    },
+    {
+      "region_id": "icelandic-eez",
+      "species_note": "North Atlantic salmon migration corridor (illustrative demo)."
+    }
+  ],
+  "trout": [
+    {
+      "region_id": "scotian-shelf",
+      "species_note": "Sea-run trout / char coastal fisheries (illustrative); marine IUU angle is weaker than cod or salmon."
+    },
+    {
+      "region_id": "new-england",
+      "species_note": "Coastal anadromous fisheries showcase; demo only."
+    },
+    {
+      "region_id": "western-mediterranean",
+      "species_note": "Coastal recreational and small-scale overlap (illustrative); not a species distribution claim."
+    }
+  ]
+}

@@ -1,52 +1,42 @@
 [
   {
     "mmsi": "231053000",
-    "status": "dry_run",
-    "error": ""
-  },
-  {
-    "mmsi": "244373000",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   },
   {
     "mmsi": "250103600",
-    "status": "dry_run",
-    "error": ""
-  },
-  {
-    "mmsi": "412217999",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   },
   {
     "mmsi": "412287951",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   },
   {
     "mmsi": "412327202",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   },
   {
     "mmsi": "412423968",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   },
   {
     "mmsi": "412500991",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   },
   {
     "mmsi": "432448000",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   },
   {
     "mmsi": "657265600",
-    "status": "dry_run",
+    "status": "not_found",
     "error": ""
   }
 ]

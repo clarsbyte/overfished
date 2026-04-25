@@ -1,15 +1,12 @@
 /// <reference types="vite/client" />
 /// <reference types="geojson" />
 
-declare module "*.vert" {
-  const src: string;
-  export default src;
+interface ImportMetaEnv {
+  readonly VITE_API_URL?: string;
+  readonly VITE_AGENT_API_URL?: string;
+  readonly MAP_BOX_TOKEN?: string;
 }
-declare module "*.frag" {
-  const src: string;
-  export default src;
-}
-declare module "*.glsl" {
-  const src: string;
-  export default src;
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
 }
