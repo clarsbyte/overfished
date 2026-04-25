@@ -146,14 +146,35 @@ def list_vessel_events(
 
 
 @tool
-def send_vessel_warning(vessel_name: str, mmsi: str, violations_summary: str) -> str:
+def send_vessel_warning(
+    vessel_name: str,
+    mmsi: str,
+    violations_summary: str,
+    phone_number: str | None = None,
+) -> str:
     """Generate a spoken audio warning for a vessel via ElevenLabs TTS.
 
-    Only call this when the user explicitly requests an audio warning.
+    Only call this when the user explicitly requests an audio warning or phone call.
     Pass the vessel's display name, MMSI, and a concise summary of the violations.
-    Returns the spoken message text and the path to the saved MP3 file.
+    If phone_number is provided (E.164 format e.g. "+15551234567"), also places a
+    Twilio call to that number playing the audio — requires AUDIO_BASE_URL in .env.
     """
     try:
+        if phone_number:
+            audio_base_url = os.getenv("AUDIO_BASE_URL", "").strip()
+            if not audio_base_url:
+                return (
+                    "Phone call requested but AUDIO_BASE_URL is not set in .env. "
+                    "Set it to your server's /audio URL (e.g. http://localhost:8000/audio)."
+                )
+            from comms_lookup import generate_and_call
+            result = generate_and_call(vessel_name, mmsi, violations_summary, phone_number, audio_base_url)
+            return (
+                f"Audio warning generated and call placed.\n"
+                f"Message: {result['message']}\n"
+                f"Audio URL: {result['audio_url']}\n"
+                f"Call SID: {result['call_sid']}"
+            )
         result = generate_vessel_warning(vessel_name, mmsi, violations_summary)
         return (
             f"Audio warning generated.\n"
@@ -161,7 +182,7 @@ def send_vessel_warning(vessel_name: str, mmsi: str, violations_summary: str) ->
             f"File: {result['audio_path']}"
         )
     except Exception as exc:
-        return f"Audio generation failed: {exc!s}"
+        return f"Warning generation failed: {exc!s}"
 
 
 SYSTEM_PROMPT = """You are an IUU (Illegal, Unreported, Unregulated) fishing risk analyst backed by Global Fishing Watch data.

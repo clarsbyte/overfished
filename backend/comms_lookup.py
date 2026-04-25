@@ -92,3 +92,36 @@ def generate_vessel_warning(
     audio_path = _generate_audio(message, filename, out_dir, voice_id)
 
     return {"message": message, "audio_path": str(audio_path.resolve())}
+
+
+def generate_and_call(
+    vessel_name: str,
+    mmsi: str,
+    violations: str,
+    phone_number: str,
+    audio_base_url: str,
+    voice_id: str = DEFAULT_VOICE_ID,
+    output_dir: Path | str | None = None,
+) -> dict[str, str]:
+    """Generate a warning audio file and place a phone call to play it.
+
+    Args:
+        vessel_name: display name of the vessel.
+        mmsi: MMSI number.
+        violations: short description of the concerning behaviour (1–2 sentences).
+        phone_number: E.164 destination number (e.g. "+15551234567").
+        audio_base_url: base URL where audio_output/ is served (e.g. "http://localhost:8000/audio").
+        voice_id: ElevenLabs voice ID. Defaults to Adam.
+        output_dir: directory to save the MP3. Defaults to backend/audio_output/.
+
+    Returns:
+        {"message", "audio_path", "audio_url", "call_sid"}
+    """
+    from call_lookup import call_with_audio
+
+    warning = generate_vessel_warning(vessel_name, mmsi, violations, voice_id, output_dir)
+    mmsi_safe = mmsi.strip().replace(" ", "_") or "vessel"
+    audio_url = f"{audio_base_url.rstrip('/')}/warning_{mmsi_safe}.mp3"
+    call_sid = call_with_audio(phone_number, audio_url)
+
+    return {**warning, "audio_url": audio_url, "call_sid": call_sid}
