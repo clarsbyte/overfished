@@ -21,6 +21,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 
+from comms_lookup import generate_vessel_warning
 from gfw_lookup import (
     VesselRecord,
     get_vessel_events,
@@ -144,6 +145,25 @@ def list_vessel_events(
     return _format_events(events, event_type.upper())
 
 
+@tool
+def send_vessel_warning(vessel_name: str, mmsi: str, violations_summary: str) -> str:
+    """Generate a spoken audio warning for a vessel via ElevenLabs TTS.
+
+    Only call this when the user explicitly requests an audio warning.
+    Pass the vessel's display name, MMSI, and a concise summary of the violations.
+    Returns the spoken message text and the path to the saved MP3 file.
+    """
+    try:
+        result = generate_vessel_warning(vessel_name, mmsi, violations_summary)
+        return (
+            f"Audio warning generated.\n"
+            f"Message: {result['message']}\n"
+            f"File: {result['audio_path']}"
+        )
+    except Exception as exc:
+        return f"Audio generation failed: {exc!s}"
+
+
 SYSTEM_PROMPT = """You are an IUU (Illegal, Unreported, Unregulated) fishing risk analyst backed by Global Fishing Watch data.
 
 Pipeline (follow this order):
@@ -169,6 +189,11 @@ Calibration:
 - Vessel not found in GFW or sparse data → INSUFFICIENT DATA.
 
 Always state that GFW indicators reflect *apparent* activity inferred from AIS + registries, not legally adjudicated illegal fishing.
+
+Audio warnings:
+- Only call `send_vessel_warning` when the user explicitly asks for an audio warning or message to be sent to the vessel.
+- Never call it automatically as part of a risk assessment.
+- When called, pass the vessel name, MMSI, and a concise 1–2 sentence summary of the key violations.
 """
 
 
@@ -185,7 +210,7 @@ def build_agent_executor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
             ("placeholder", "{agent_scratchpad}"),
         ]
     )
-    tools = [find_vessel, assess_iuu_insights, list_vessel_events]
+    tools = [find_vessel, assess_iuu_insights, list_vessel_events, send_vessel_warning]
     agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True)
 
