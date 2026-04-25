@@ -44,7 +44,7 @@ import {
   useAnimatedFleet,
 } from "./useAnimatedFleet";
 import { useDrawController } from "./useDrawController";
-import { makeLightweightVesselMesh, makeVesselMesh, preloadVesselModel } from "./vesselMesh";
+import { makeLightweightVesselMesh } from "./vesselMesh";
 
 export interface PortCall {
   startLat: number;
@@ -80,11 +80,20 @@ export interface FisheryRegion {
   geometry: GeoJSON.Polygon;
 }
 
+export interface LayerOverrides {
+  showVessels?: boolean;
+  showHeatmap?: boolean;
+  showPaths?: boolean;
+  flightCount?: number;
+}
+
 interface Props {
   draw: ReturnType<typeof useDrawController>;
   onVesselSelected: (vessel: Vessel) => void;
   onRegionSelected?: (region: FisheryRegion) => void;
   portCalls?: PortCall[];
+  /** When provided, these override the leva debug-panel values. */
+  layerOverrides?: LayerOverrides;
 }
 
 // Blue Marble (NASA): bright daytime imagery, visible continents and oceans.
@@ -108,47 +117,26 @@ export function OverfishGlobe({
   onVesselSelected,
   onRegionSelected,
   portCalls = [],
+  layerOverrides,
 }: Props) {
   const globeRef = useRef<GlobeMethods>();
 
-  // Live-tunable controls (leva panel mounted in main.tsx).
-  const controls = useGlobeControls();
+  // Live-tunable controls (leva panel mounted in main.tsx, hidden unless ?debug).
+  // Panel-driven overrides win; otherwise we fall back to the leva defaults.
+  const ctl = useGlobeControls();
+  const showVessels = layerOverrides?.showVessels ?? ctl.showVessels;
+  const showHeatmap = layerOverrides?.showHeatmap ?? ctl.showHeatmap;
+  const showPaths = layerOverrides?.showPaths ?? ctl.showPaths;
+  const flightCount = layerOverrides?.flightCount ?? ctl.flightCount;
 
-  // Track when the GLTF model is ready so vessel meshes can re-render to
-  // pick it up. We bump a cache-busting key on load — the meshCacheRef gets
-  // cleared and getVesselMesh rebuilds from cachedGltf the next time.
-  const [modelReady, setModelReady] = useState(false);
-
-  // Initial camera + auto-rotate + GLTF preload + extra lighting (the PBR
-  // procedural ship and any GLTF need MeshStandardMaterial-friendly light).
   useEffect(() => {
     if (!globeRef.current) return;
-    const controls = globeRef.current.controls();
-    if (controls) {
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.4;
+    const orbit = globeRef.current.controls();
+    if (orbit) {
+      orbit.autoRotate = true;
+      orbit.autoRotateSpeed = 0.4;
     }
     globeRef.current.pointOfView({ lat: -0.5, lng: -90.5, altitude: 1.8 }, 0);
-
-    // Add a hemisphere light so PBR materials (procedural and GLTF) are
-    // visible from any angle. Default scene has only ambient + directional.
-    const scene = globeRef.current.scene();
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x223355, 1.1);
-    scene.add(hemi);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.6);
-    fill.position.set(-150, 100, 50);
-    scene.add(fill);
-
-    // Kick off GLTF load (no-op if no model file is present; falls back to
-    // the procedural ship until or unless a real GLTF resolves).
-    void preloadVesselModel().then((loaded) => {
-      if (loaded) setModelReady(true);
-    });
-
-    return () => {
-      scene.remove(hemi);
-      scene.remove(fill);
-    };
   }, []);
 
   // Pause auto-rotate while drawing OR while a region is selected, so the
@@ -215,30 +203,18 @@ export function OverfishGlobe({
   // the same vessel. globe.gl re-uses the existing mesh when the reference
   // matches; if we returned a new clone each call, the layer would tear down
   // and rebuild scene graph entries every frame (catastrophic perf).
-  //
-  // Cleared when the GLTF resolves so cached procedural meshes get upgraded.
   const meshCacheRef = useRef<Map<string, THREE.Group>>(new Map());
-  useEffect(() => {
-    meshCacheRef.current.clear();
-  }, [modelReady]);
   useEffect(() => () => meshCacheRef.current.clear(), []);
 
   const getVesselMesh = useCallback((d: object): THREE.Object3D => {
     const v = d as AnimatedVessel;
     let mesh = meshCacheRef.current.get(v.mmsi);
     if (!mesh) {
-      const isFlagged = v.mmsi === DEMO_MMSI;
-      // The flagged demo vessel gets the polished PBR ship (we zoom close to
-      // it). Every other vessel uses the lightweight BoxGeometry build —
-      // ~6× fewer vertices and no MeshStandardMaterial shading cost.
-      mesh = isFlagged
-        ? makeVesselMesh(RISK_COLOR[v.risk], true)
-        : makeLightweightVesselMesh(RISK_COLOR[v.risk]);
-      const scale = isFlagged ? 1.6 : 1.2;
+      mesh = makeLightweightVesselMesh(RISK_COLOR[v.risk]);
+      const scale = v.mmsi === DEMO_MMSI ? 1.6 : 1.2;
       mesh.scale.set(scale, scale, scale);
       meshCacheRef.current.set(v.mmsi, mesh);
     }
-    // Update rotation in place — heading changes per frame as vessel moves.
     mesh.rotation.set(0, 0, ((-v.heading + 90) * Math.PI) / 180);
     return mesh;
   }, []);
@@ -262,43 +238,40 @@ export function OverfishGlobe({
   const [flightRoutes, setFlightRoutes] = useState<FlightRoute[]>([]);
   useEffect(() => {
     let cancelled = false;
-    if (controls.flightCount <= 0) {
+    if (flightCount <= 0) {
       setFlightRoutes([]);
       return;
     }
     void whenLandMaskReady().then(() => {
       if (cancelled) return;
-      const routes: FlightRoute[] = generateRoutes(controls.flightCount, 42).map(
-        (r) => {
-          const c = RISK_COLOR[r.risk];
-          return {
-            waypoints: r.waypoints,
-            // Curve fades from 25% alpha cool to bright at the destination.
-            curveColorStart: new THREE.Color(c).multiplyScalar(0.25),
-            curveColorEnd: new THREE.Color(c),
-            vesselColor: c,
-          };
-        },
-      );
+      const routes: FlightRoute[] = generateRoutes(flightCount, 42).map((r) => {
+        const c = RISK_COLOR[r.risk];
+        return {
+          waypoints: r.waypoints,
+          curveColorStart: new THREE.Color(c).multiplyScalar(0.25),
+          curveColorEnd: new THREE.Color(c),
+          vesselColor: c,
+        };
+      });
       setFlightRoutes(routes);
     });
     return () => {
       cancelled = true;
     };
-  }, [controls.flightCount]);
+  }, [flightCount]);
 
   useFlightPathLayer(globeRef, {
     routes: flightRoutes,
-    showVessels: controls.showVessels,
-    showPaths: controls.showPaths,
-    vesselSize: controls.vesselSize,
-    animationSpeed: controls.animationSpeed,
-    tiltMode: controls.tiltMode,
-    dashSize: controls.dashSize,
-    gapSize: controls.gapSize,
-    vesselElevation: controls.vesselElevation,
-    arcMinAltitude: controls.arcMinAltitude,
-    arcMaxAltitude: controls.arcMaxAltitude,
+    showVessels,
+    showPaths,
+    vesselSize: ctl.vesselSize,
+    animationSpeed: ctl.animationSpeed,
+    tiltMode: ctl.tiltMode,
+    dashSize: ctl.dashSize,
+    gapSize: ctl.gapSize,
+    vesselElevation: ctl.vesselElevation,
+    arcMinAltitude: ctl.arcMinAltitude,
+    arcMaxAltitude: ctl.arcMaxAltitude,
   });
 
   // ── Arcs: demo vessel parabolic trajectory + port-call surface line ──
@@ -340,32 +313,18 @@ export function OverfishGlobe({
     [flagged, portPulseRings],
   );
 
-  // ── Paths: cheap static ambient wakes + drawing polyline ─────────────
-  // Demo vessel trajectory moved to the Arcs layer (parabolic) — see below.
-  // Ambient wakes are kept here but rendered WITHOUT animated dashes (the
-  // animated-dash shader was the previous bottleneck). Static colored lines
-  // for ~12 of 24 vessels make the ocean read as alive without per-frame
-  // shader work.
-  type AnyPath =
-    | { kind: "wake"; points: [number, number][]; risk: keyof typeof RISK_COLOR }
-    | { kind: "draft"; pts: { lat: number; lng: number }[] };
-
-  const WAKE_SAMPLE_RATE = 2; // every 2nd ambient vessel → ~12 wakes from 24
+  // ── Paths: drawing polyline only ─────────────────────────────────────
+  // Ambient wakes were removed for perf; the demo vessel trajectory still
+  // renders via the Arcs layer (parabolic) below.
+  type AnyPath = { kind: "draft"; pts: { lat: number; lng: number }[] };
 
   const pathsData: AnyPath[] = useMemo(() => {
     const out: AnyPath[] = [];
-    const tracks = globalTracksQ.data ?? [];
-    for (let i = 0; i < tracks.length; i += WAKE_SAMPLE_RATE) {
-      const v = tracks[i];
-      if (v.points.length < 2) continue;
-      out.push({ kind: "wake", points: v.points, risk: v.risk });
-    }
-    // In-progress drawing polyline.
     for (const p of draw.drawingPathsData) {
       out.push({ kind: "draft", pts: p.pts });
     }
     return out;
-  }, [globalTracksQ.data, draw.drawingPathsData]);
+  }, [draw.drawingPathsData]);
 
   // ── Polygons (MPA + drawn region + invisible region click targets) ───
   // The "click target" entries are invisible (cap+side+stroke all transparent)
@@ -397,8 +356,8 @@ export function OverfishGlobe({
 
   // ── Heatmap ──────────────────────────────────────────────────────────
   const heatmapsData = useMemo(
-    () => (controls.showHeatmap && heatmapQ.data ? [heatmapQ.data] : []),
-    [heatmapQ.data, controls.showHeatmap],
+    () => (showHeatmap && heatmapQ.data ? [heatmapQ.data] : []),
+    [heatmapQ.data, showHeatmap],
   );
 
   // ── Labels ───────────────────────────────────────────────────────────
@@ -456,38 +415,15 @@ export function OverfishGlobe({
     [isDrawing],
   );
 
-  // ── Stable path accessors ────────────────────────────────────────────
-  // Wakes: static colored lines (no animated dash → no per-frame shader work).
-  // Draft: in-progress drawing polyline (cyan, animated for visibility).
-  const pathPoints = useCallback((d: object) => {
-    const p = d as AnyPath;
-    if (p.kind === "draft") return p.pts.map((v) => [v.lat, v.lng]);
-    return p.points;
-  }, []);
-
-  const pathColor = useCallback((d: object): string[] => {
-    const p = d as AnyPath;
-    if (p.kind === "draft") return ["#00ffe0", "#00ffe0"];
-    const c = RISK_COLOR[p.risk];
-    return [hexToRgba(c, 0), hexToRgba(c, 0.55)];
-  }, []);
-
-  const pathStroke = useCallback((d: object) => {
-    const p = d as AnyPath;
-    return p.kind === "draft" ? 0.4 : 0.22;
-  }, []);
-
-  // Wakes have NO dash animation (this was the previous bottleneck). Only
-  // the drafting polyline animates.
-  const pathDashLength = useCallback((d: object) => {
-    const p = d as AnyPath;
-    return p.kind === "draft" ? 0.3 : 0; // 0 = solid line, no dashes
-  }, []);
-
-  const pathDashAnimateTime = useCallback((d: object) => {
-    const p = d as AnyPath;
-    return p.kind === "draft" ? 1500 : 0; // 0 = no animation
-  }, []);
+  // ── Stable path accessors (drawing polyline only) ────────────────────
+  const pathPoints = useCallback(
+    (d: object) => (d as AnyPath).pts.map((v) => [v.lat, v.lng]),
+    [],
+  );
+  const pathColor = useCallback((): string[] => ["#00ffe0", "#00ffe0"], []);
+  const pathStroke = useCallback(() => 0.4, []);
+  const pathDashLength = useCallback(() => 0.3, []);
+  const pathDashAnimateTime = useCallback(() => 1500, []);
 
   // Stable accessors for the 3D objects layer (vessels)
   const objectLat = useCallback((d: object) => (d as AnimatedVessel).lat, []);
@@ -597,7 +533,7 @@ export function OverfishGlobe({
         onPolygonClick={handlePolygonClick}
         polygonsTransitionDuration={1200}
         /* ── Vessel meshes (3D Objects) ────────────────── */
-        objectsData={controls.showVessels ? animatedVessels : []}
+        objectsData={showVessels ? animatedVessels : []}
         objectLat={objectLat}
         objectLng={objectLng}
         objectAltitude={0.012}
@@ -690,9 +626,3 @@ export function OverfishGlobe({
   );
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}

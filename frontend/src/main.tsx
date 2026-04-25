@@ -10,14 +10,20 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 60_000,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
     },
   },
 });
 
+const debug =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("debug");
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <Leva collapsed={false} oneLineLabels={false} />
+      <Leva hidden={!debug} collapsed={!debug} oneLineLabels={false} />
       <App />
     </QueryClientProvider>
   </React.StrictMode>,
