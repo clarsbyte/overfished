@@ -10,6 +10,12 @@ const BG_IMG    = "//unpkg.com/three-globe/example/img/night-sky.png";
 const HIGH_RISK = new Set(["CHN", "TWN", "VUT", "COM", "TGO", "GNE"]);
 const MED_RISK  = new Set(["KOR", "RUS", "ESP", "IDN", "IRN"]);
 
+// Stable module-level accessors — never recreated on re-render so Globe
+// doesn't think its data changed and rebuild the 61K-point mesh.
+const pointLat   = (d: object) => (d as GfwDot).lat;
+const pointLng   = (d: object) => (d as GfwDot).lng;
+const EMPTY: GfwDot[] = [];
+
 function dotColor(d: object) {
   const flag = (d as GfwDot).flag ?? "";
   if (HIGH_RISK.has(flag)) return "rgba(255,80,20,0.85)";
@@ -153,9 +159,9 @@ export default function GlobeClient() {
         atmosphereColor="#00b3ff"
         atmosphereAltitude={0.28}
         showGraticules={false}
-        pointsData={showDots ? dots : []}
-        pointLat={(d) => (d as GfwDot).lat}
-        pointLng={(d) => (d as GfwDot).lng}
+        pointsData={showDots ? dots : EMPTY}
+        pointLat={pointLat}
+        pointLng={pointLng}
         pointAltitude={0}
         pointColor={dotColor}
         pointRadius={0.12}
