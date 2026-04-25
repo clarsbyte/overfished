@@ -15,10 +15,11 @@ env/
 .ruff_cache/
 .mypy_cache/
 
-# Node / Vite
+# Node / Vite / Next.js
 node_modules/
 dist/
 .vite/
+.next/
 *.tsbuildinfo
 
 # Generated artifacts

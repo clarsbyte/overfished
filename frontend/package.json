@@ -2,30 +2,25 @@
   "name": "overfish-ai-frontend",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
-    "predev": "../backend/.venv/bin/python ../scripts/generate_ts_types.py || python3 ../scripts/generate_ts_types.py",
-    "prebuild": "../backend/.venv/bin/python ../scripts/generate_ts_types.py || python3 ../scripts/generate_ts_types.py",
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "predev": "node scripts/preprocess-gfw.mjs",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "next": "16.2.4",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-globe.gl": "^2.37.1",
     "three": "^0.179.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
     "@types/three": "^0.179.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.4",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
   }
 }
