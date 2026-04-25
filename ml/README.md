@@ -58,3 +58,46 @@ config = DatabricksConnectionConfig.from_env()
 required_columns = ["mmsi", "event_ts", "lat", "lon"]
 gold_df = load_golden_dataset(config, required_columns=required_columns)
 ```
+
+## Train predictive RNN + 1D-BiLSTM
+
+The sequence training pipeline groups rows by `mmsi`, sorts by `event_start`,
+and trains both RNN and BiLSTM models to output global MMSI soft-assignment
+probabilities.
+
+```python
+from pathlib import Path
+
+import pandas as pd
+from overfished_ml.sequence import (
+    DatabricksConnectionConfig,
+    TrainingConfig,
+    load_golden_dataset,
+    train_and_compare_models,
+)
+
+config = DatabricksConnectionConfig.from_env()
+gold_df = load_golden_dataset(config, required_columns=["mmsi", "event_start"])
+
+training_config = TrainingConfig(
+    seq_len=8,
+    stride=1,
+    val_fraction=0.2,
+    batch_size=16,
+    epochs=10,
+    hidden_dim=64,
+    checkpoint_dir=str(Path("artifacts/checkpoints")),
+)
+comparison = train_and_compare_models(gold_df, config=training_config)
+
+print("Selected model:", comparison.selected_model_type)
+print("RNN metrics:", comparison.rnn_result.metrics)
+print("BiLSTM metrics:", comparison.bilstm_result.metrics)
+print("Ensemble metrics:", comparison.ensemble_metrics)
+```
+
+For local/offline iteration, replace the loader call with:
+
+```python
+gold_df = pd.read_csv("../data/gold_vessel_detections_enriched.csv")
+```
