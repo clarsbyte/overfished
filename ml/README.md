@@ -1,10 +1,12 @@
 # overfished-ml
 
-Package for computer-vision and sequence-model workflows intended to run primarily
-on **Databricks** (notebooks, jobs, MLflow, Unity Catalog).
+Package for local-first overfishing ML workflows. Databricks remains optional for
+warehouse-backed training, while the medallion ETL pipeline now runs fully local
+by default.
 
 This repository currently includes:
 
+- local medallion ETL in `overfished_ml.local_pipeline` (bronze/silver/gold)
 - CV train/infer entrypoint stubs in `overfished_ml.cv`
 - sequence-model scaffolding in `overfished_ml.sequence`:
   - `BoatRNNClassifier`
@@ -12,6 +14,63 @@ This repository currently includes:
   - soft assignment helpers for boat allocation probabilities
 
 See [../README.md](../README.md) and [../databricks/README.md](../databricks/README.md).
+
+## Local Medallion Pipeline (Default)
+
+### Install
+
+From `ml/`:
+
+```bash
+pip install -e ".[dev]"
+```
+
+### Run locally
+
+From `ml/`:
+
+```bash
+overfished-pipeline --runtime local
+```
+
+You can also run with `python -m overfished_ml.local_pipeline.cli --runtime local`.
+Requires Java 17+ for Spark runtime compatibility.
+
+Default committed input:
+- `../data/local_pipeline/sample_fishing_events.csv`
+
+Default outputs:
+- `../data/local_pipeline/output/bronze_fishing_events`
+- `../data/local_pipeline/output/silver_fishing_events`
+- `../data/local_pipeline/output/gold_fishing_features`
+- `../data/local_pipeline/output/gold_fishing_features_csv`
+
+### Run on ASUS Ascent GX10 (optional over SSH)
+
+Set:
+
+```bash
+export GX10_HOST=<host-or-ip>
+export GX10_USER=<ssh-user>
+export GX10_REMOTE_WORKDIR=<remote-dir>
+export GX10_SSH_PORT=22              # optional
+export GX10_SSH_KEY_PATH=~/.ssh/id_rsa  # optional
+```
+
+Then run:
+
+```bash
+overfished-pipeline --runtime gx10 --sync-gx10
+```
+
+This syncs `ml/` and `data/local_pipeline/` to the remote workdir and executes
+the same pipeline command on GX10.
+
+### Data policy
+
+- Commit only sample inputs in `../data/local_pipeline/`.
+- Put full raw extracts in `../data/local_pipeline/raw/` (ignored by git).
+- Generated outputs in `../data/local_pipeline/output/` are ignored by git.
 
 ## Sequence module quickstart
 

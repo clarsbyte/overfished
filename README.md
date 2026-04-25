@@ -12,7 +12,7 @@ Surface illegal or high-risk fishing using vessel activity, regional regulations
 ## Honesty and scope
 
 - External fishing APIs are **near-real-time**, not live; product copy should say so.
-- Operational vessel detections may come from provider-classified data; custom CV (e.g. SAR / YOLO) is a **separate showcase path** documented in [ml/](ml/) and [databricks/](databricks/README.md).
+- Operational vessel detections may come from provider-classified data; custom CV (e.g. SAR / YOLO) is a **separate showcase path** documented in [ml/](ml/) and optionally [databricks/](databricks/README.md).
 
 ## Stack and layers
 
@@ -20,9 +20,9 @@ Surface illegal or high-risk fishing using vessel activity, regional regulations
 |-------|----------|------|
 | Presentation | [frontend/](frontend/) | Next.js UI; calls the BFF over HTTP only. |
 | API (BFF) | [api/](api/) | FastAPI routes, OpenAPI, DI; **no** embedded business logic in this scaffold. |
-| ML library (stubs) | [ml/](ml/) | CV / feature entrypoints reserved for Databricks-driven workflows. |
+| ML library | [ml/](ml/) | Local-first medallion ETL + sequence/CV modules; can run without Databricks. |
 | Agent plugin (optional) | [plugins/langchain_plugin/](plugins/langchain_plugin/) | LangChain behind `AgentBackend`; install only when needed. |
-| Databricks | [databricks/](databricks/) | Jobs, notebooks, MLflow / Unity Catalog; not the Next.js runtime. |
+| Databricks (optional) | [databricks/](databricks/) | Jobs, notebooks, MLflow / Unity Catalog when cloud orchestration is needed. |
 
 Architecture detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -31,7 +31,7 @@ Architecture detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```text
 frontend/                 Next.js app
 api/                      FastAPI BFF (routers + ports + deps)
-ml/                       Stub ML/CV package for Databricks alignment
+ml/                       Local-first ML package (pipeline + sequence/CV modules)
 plugins/langchain_plugin/ Optional LangChain implementation of AgentBackend
 databricks/               Asset bundle placeholder + platform README
 docs/                     Architecture notes
@@ -48,6 +48,11 @@ Set these in deployment or `.env` for the API (see [api/](api/) when running loc
 | `DATABRICKS_HOST` | Databricks CLI / jobs | Workspace host. |
 | `DATABRICKS_TOKEN` | Databricks CLI / jobs | PAT (never commit). |
 | `MLFLOW_TRACKING_URI` | ML jobs (optional) | Experiment tracking. |
+| `GX10_HOST` | ML pipeline runtime | Remote host/IP for optional GX10 SSH execution. |
+| `GX10_USER` | ML pipeline runtime | SSH user for GX10 execution. |
+| `GX10_REMOTE_WORKDIR` | ML pipeline runtime | Remote directory where synced code/data are executed. |
+| `GX10_SSH_KEY_PATH` | ML pipeline runtime (optional) | SSH private key path for GX10 auth. |
+| `GX10_SSH_PORT` | ML pipeline runtime (optional) | SSH port (default `22`). |
 
 ## Install and run (scaffold)
 

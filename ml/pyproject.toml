@@ -11,9 +11,13 @@ requires-python = ">=3.11"
 dependencies = [
     "databricks-sql-connector",
     "pandas",
+    "pyspark",
     "python-dotenv",
     "torch>=2.2.0",
 ]
+
+[project.scripts]
+overfished-pipeline = "overfished_ml.local_pipeline.cli:main"
 
 [project.optional-dependencies]
 dev = ["ruff>=0.8.0"]
