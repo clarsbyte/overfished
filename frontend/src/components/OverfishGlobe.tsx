@@ -45,6 +45,7 @@ import {
 } from "./useAnimatedFleet";
 import { useDrawController } from "./useDrawController";
 import { makeLightweightVesselMesh, makeVesselMesh, preloadVesselModel } from "./vesselMesh";
+import { useGlobeControlsContext } from "./GlobeControlsContext";
 
 export interface PortCall {
   startLat: number;
@@ -59,19 +60,19 @@ export interface PortCall {
  */
 type AnyArc =
   | {
-      kind: "demo_track";
-      startLat: number;
-      startLng: number;
-      endLat: number;
-      endLng: number;
-    }
+    kind: "demo_track";
+    startLat: number;
+    startLng: number;
+    endLat: number;
+    endLng: number;
+  }
   | {
-      kind: "port_call";
-      startLat: number;
-      startLng: number;
-      endLat: number;
-      endLng: number;
-    };
+    kind: "port_call";
+    startLat: number;
+    startLng: number;
+    endLat: number;
+    endLng: number;
+  };
 
 export interface FisheryRegion {
   region_id: string;
@@ -113,6 +114,7 @@ export function OverfishGlobe({
 
   // Live-tunable controls (leva panel mounted in main.tsx).
   const controls = useGlobeControls();
+  const { isUpdatingLayers } = useGlobeControlsContext();
 
   // Track when the GLTF model is ready so vessel meshes can re-render to
   // pick it up. We bump a cache-busting key on load — the meshCacheRef gets
@@ -128,7 +130,7 @@ export function OverfishGlobe({
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.4;
     }
-    globeRef.current.pointOfView({ lat: -0.5, lng: -90.5, altitude: 1.8 }, 0);
+    globeRef.current.pointOfView({ lat: -0.5, lng: -90.5, altitude: 2.4 }, 0);
 
     // Add a hemisphere light so PBR materials (procedural and GLTF) are
     // visible from any angle. Default scene has only ambient + directional.
@@ -181,6 +183,14 @@ export function OverfishGlobe({
   const globalTracksQ = useQuery({
     queryKey: ["globalTracks"],
     queryFn: () => api.globalVesselTracks(),
+  });
+  const pointsQ = useQuery({
+    queryKey: ["fishingDots"],
+    queryFn: async () => {
+      const res = await fetch("/fishing-dots.json");
+      if (!res.ok) throw new Error("Failed to load dots");
+      return res.json() as Promise<{ lat: number; lng: number; flag: string | null; hours: number }[]>;
+    },
   });
 
   const isDrawing = draw.mode === "drawing";
@@ -534,7 +544,17 @@ export function OverfishGlobe({
   }, []);
 
   return (
-    <div className="globe-host">
+    <div className="globe-host relative">
+      {/* Heavy 3D Calculation Loading Overlay */}
+      {isUpdatingLayers && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-none transition-opacity">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+            <div className="text-cyan-400/80 font-mono text-sm tracking-widest uppercase animate-pulse">Rendering Data...</div>
+          </div>
+        </div>
+      )}
+
       <Globe
         ref={globeRef}
         globeImageUrl={GLOBE_IMG}
@@ -560,6 +580,23 @@ export function OverfishGlobe({
         heatmapBaseAltitude={0.01}
         heatmapTopAltitude={0.04}
         heatmapsTransitionDuration={2000}
+
+        /* ── Points (Raw AIS positions) ───────── */
+        pointsData={controls.showPoints ? pointsQ.data ?? [] : []}
+        pointLat="lat"
+        pointLng="lng"
+        pointColor={(d: object) => {
+          const flag = (d as { flag: string | null }).flag ?? "";
+          if (["CHN", "TWN", "VUT", "COM", "TGO", "GNE"].includes(flag)) return "rgba(255,80,20,0.85)";
+          if (["KOR", "RUS", "ESP", "IDN", "IRN"].includes(flag)) return "rgba(255,160,0,0.80)";
+          return "rgba(255,210,50,0.72)";
+        }}
+        pointAltitude={0.01}
+        pointRadius={0.12}
+        pointResolution={3}
+        pointsMerge={true}
+        pointsTransitionDuration={0}
+
         /* ── Polygons: MPA boundary + user draw + invisible region click targets ── */
         polygonsData={polygonsData}
         polygonGeoJsonGeometry={(d: object) =>
