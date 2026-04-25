@@ -36,9 +36,10 @@ from regional_lookup import (
     identify_coastal_state,
     list_cached_regions,
 )
-from services.legal_vectorstore import query_rules as _query_rag_rules
 
 load_dotenv()
+
+_RAG_ENABLED = os.getenv("RAG_FINETUNE", "FALSE").strip().upper() not in ("FALSE", "0", "")
 
 
 def _dump(obj) -> str:
@@ -134,41 +135,101 @@ def list_known_regions() -> str:
     return _dump(list_cached_regions())
 
 
-@tool
-def query_faolex_rag(query: str, country_code: str | None = None, top_k: int = 5) -> str:
-    """Semantic search over FAOLEX rules extracted by a fine-tuned legal NER model.
+if _RAG_ENABLED:
+    from services.legal_vectorstore import query_rules as _query_rag_rules
 
-    Use this when:
-      - The curated coastal-state dossier returned no match (e.g., for CHN/IDN
-        which aren't in the curated cache).
-      - The curated rules don't speak to the specific gear, species, or
-        penalty at hand and you need broader recall.
+    @tool
+    def query_faolex_rag(query: str, country_code: str | None = None, top_k: int = 5) -> str:
+        """Semantic search over FAOLEX rules extracted by a fine-tuned legal NER model.
 
-    Args:
-      query: a free-text description of the situation. Include vessel gear,
-        target species, and any zone hints. Example:
-        "purse seine for bluefin tuna inside a no-take zone".
-      country_code: ISO3 filter (ECU, PHL, ESP, CHN, IDN). Optional but
-        strongly recommended — cross-jurisdiction noise otherwise.
-      top_k: number of hits to return (default 5).
+        Use this when:
+          - The curated coastal-state dossier returned no match (e.g., for CHN/IDN
+            which aren't in the curated cache).
+          - The curated rules don't speak to the specific gear, species, or
+            penalty at hand and you need broader recall.
 
-    Returns: JSON list of rule payloads. Each carries `confidence: "silver"`,
-    `source_sentence`, `source_doc` (LEX-FAOC id), `source_url`, and any
-    extracted species/gear/zone/prohibition/penalty_usd fields. Cite by
-    quoting `source_sentence` and the source_doc — and tag the citation as
-    `confidence: silver` so the verdict stays calibrated.
+        Args:
+          query: a free-text description of the situation. Include vessel gear,
+            target species, and any zone hints. Example:
+            "purse seine for bluefin tuna inside a no-take zone".
+          country_code: ISO3 filter (ECU, PHL, ESP, CHN, IDN). Optional but
+            strongly recommended — cross-jurisdiction noise otherwise.
+          top_k: number of hits to return (default 5).
 
-    Returns an `error` payload if the RAG backend isn't installed on this
-    host (graceful degradation).
-    """
-    try:
-        hits = _query_rag_rules(query=query, country=country_code, top_k=top_k)
-    except Exception as exc:
-        return _dump({"error": f"query_faolex_rag failed: {exc!s}"})
-    return _dump(hits)
+        Returns: JSON list of rule payloads. Each carries `confidence: "silver"`,
+        `source_sentence`, `source_doc` (LEX-FAOC id), `source_url`, and any
+        extracted species/gear/zone/prohibition/penalty_usd fields. Cite by
+        quoting `source_sentence` and the source_doc — and tag the citation as
+        `confidence: silver` so the verdict stays calibrated.
+
+        Returns an `error` payload if the RAG backend isn't installed on this
+        host (graceful degradation).
+        """
+        try:
+            hits = _query_rag_rules(query=query, country=country_code, top_k=top_k)
+        except Exception as exc:
+            return _dump({"error": f"query_faolex_rag failed: {exc!s}"})
+        return _dump(hits)
 
 
-SYSTEM_PROMPT = """You are a fisheries legal-research assistant. Your job: given a
+_SYSTEM_PROMPT_NO_RAG = """You are a fisheries legal-research assistant. Your job: given a
+coordinate (and optionally a vessel flag, gear, species, and port-of-call), produce
+a citation-backed determination of what fishing activity is legal at that point.
+
+You draw on a source-prioritized pipeline:
+
+  Geospatial (LIVE):
+    - ProtectedSeas Navigator Global Max LFP (1–5)
+  Legal (CURATED CACHE with provenance):
+    - FISHLEX  : foreign-vessel rules per coastal state
+    - FAOLEX   : source law records (titles, year, search/permalink URLs)
+    - PORTLEX  : port state measures for IUU enforcement
+
+Pipeline:
+1. Call `assemble_dossier(latitude, longitude, port_country_code=...)`. This runs
+   the geospatial + coastal-state + (optional) port-state queries in one shot.
+2. If the dossier's `missing` array flags gaps you care about, follow up with the
+   single-purpose tools (`lookup_protectedseas_lfp`, `lookup_coastal_state`,
+   `lookup_portlex`).
+3. Produce the verdict in this exact format:
+
+VERDICT: <ALLOWED | PERMIT_REQUIRED | PROHIBITED | HIGH_RISK | INSUFFICIENT_DATA>
+COORDINATE: (<lat>, <lon>)
+COASTAL STATE: <name or "unknown">
+LFP: <1–5 or "none"> — <interpretation>
+KEY RULES:
+- <rule> [FAOLEX: <citation>, source_url, last_checked, confidence]
+- ...
+FOREIGN VESSEL REQUIREMENTS (FISHLEX):
+- <one-paragraph synthesis> [FISHLEX: source_url, last_checked, confidence]
+PORT STATE MEASURES (PORTLEX, if port supplied):
+- <one-paragraph synthesis> [PORTLEX: source_url, last_checked, confidence]
+LIKELY ILLEGAL IF:
+- <observable AIS/behavior> — translates rules into IUU classifier signals
+SOURCES:
+- ProtectedSeas Navigator: <source_url> (checked_at)
+- FISHLEX: <source_url> (last_checked)
+- PORTLEX: <source_url> (last_checked)
+- FAOLEX: <one citation per key record>
+
+Calibration:
+- LFP 5 (no-take) ........................ PROHIBITED
+- LFP 4 + foreign vessel ................. PROHIBITED unless explicit access agreement
+- LFP 1–3 + cached rule prohibits gear/area  PROHIBITED
+- LFP 1–3 + cached rule requires permit ... PERMIT_REQUIRED
+- LFP 1–3 + no relevant cached rule ...... ALLOWED (low confidence — say so)
+- AIS gap inside LFP ≥4 polygon .......... HIGH_RISK
+- coastal_state is null ................... INSUFFICIENT_DATA — do NOT invent rules
+
+Hard rules:
+- Every claim must cite at least one of FAOLEX / FISHLEX / PORTLEX / ProtectedSeas
+  with the source_url and last_checked date from the dossier.
+- Never write "AI inferred". If a layer's confidence is "curated", say "curated";
+  if "live", say "live"; if no source covers a question, say INSUFFICIENT_DATA
+  for that point and recommend the operator consult the linked FAO database.
+"""
+
+_SYSTEM_PROMPT_RAG = """You are a fisheries legal-research assistant. Your job: given a
 coordinate (and optionally a vessel flag, gear, species, and port-of-call), produce
 a citation-backed determination of what fishing activity is legal at that point.
 
@@ -238,6 +299,8 @@ Hard rules:
   linked FAO database.
 """
 
+SYSTEM_PROMPT = _SYSTEM_PROMPT_RAG if _RAG_ENABLED else _SYSTEM_PROMPT_NO_RAG
+
 
 def build_agent_executor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -259,8 +322,9 @@ def build_agent_executor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         lookup_portlex,
         get_region_full,
         list_known_regions,
-        query_faolex_rag,
     ]
+    if _RAG_ENABLED:
+        tools.append(query_faolex_rag)
     agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True)
 
