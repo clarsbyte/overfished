@@ -35,6 +35,7 @@ from langchain_core.tools import tool
 from gfw_agent import classify_vessel
 from gfw_lookup import (
     extract_mmsi,
+    find_nearest_port,
     get_events_in_region,
     get_sar_detections_in_region,
     is_fishing_vessel,
@@ -469,6 +470,7 @@ def _build_case_file(
     case_id: str | None,
     events_json: str | None,
     citations_json: str | None,
+    port: dict | None = None,
 ) -> CaseFile:
     cid = case_id or f"IUU-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{mmsi[-4:]}"
     rid = region_id or _slugify(region_name)
@@ -565,6 +567,7 @@ def _build_case_file(
     )
 
     risk = None
+    notified_port = json.dumps(port) if port else None
     return CaseFile(
         case_id=cid,
         region=region,
@@ -574,6 +577,7 @@ def _build_case_file(
         citations=citations,
         fine=fine,
         risk=risk,
+        notified_port=notified_port,
     )
 
 
@@ -597,6 +601,9 @@ def render_evidence_pdf(
     case_id: str | None = None,
     events_json: str | None = None,
     citations_json: str | None = None,
+    port_name: str | None = None,
+    port_country: str | None = None,
+    port_locode: str | None = None,
 ) -> str:
     """FINAL pipeline step — render ONE combined legal PDF if the case warrants prosecution.
 
@@ -659,6 +666,20 @@ def render_evidence_pdf(
             "must skip render and report no prosecutable evidence."
         )
 
+    port_dict: dict | None = None
+    if port_name:
+        port_dict = {
+            "name": port_name,
+            "country": port_country,
+            "un_locode": port_locode,
+        }
+    else:
+        # Last-resort: resolve at render time if the supervisor forgot to pass it.
+        try:
+            port_dict = find_nearest_port(latitude, longitude)
+        except Exception:
+            port_dict = None
+
     try:
         case = _build_case_file(
             mmsi=mmsi,
@@ -676,6 +697,7 @@ def render_evidence_pdf(
             case_id=case_id,
             events_json=events_json,
             citations_json=citations_json,
+            port=port_dict,
         )
     except Exception as exc:
         return f"PDF render failed at CaseFile assembly: {exc!s}"
@@ -701,9 +723,22 @@ def render_evidence_pdf(
 
     from documents.render import OUTPUT_DIR
 
-    pdf_path = OUTPUT_DIR / case.case_id / f"{artifact.doc_type}.pdf"
+    doc_filename = f"{artifact.doc_type}.pdf"
+    pdf_path = OUTPUT_DIR / case.case_id / doc_filename
+    port_line = ""
+    if port_dict and port_dict.get("name"):
+        port_line = (
+            f"  port_name: {port_dict.get('name')}\n"
+            f"  port_country: {port_dict.get('country') or '?'}\n"
+            f"  port_locode: {port_dict.get('un_locode') or '?'}\n"
+        )
     return (
         f"EVIDENCE_PDF_RENDERED: case_id={case.case_id} verdict={verdict}\n"
+        f"  mmsi: {mmsi}\n"
+        f"  vessel_name: {vessel_name or 'Unknown'}\n"
+        f"  vessel_flag: {vessel_flag or '?'}\n"
+        + port_line +
+        f"  doc: {doc_filename}\n"
         f"  path: {pdf_path}\n"
         f"  sha256: {artifact.sha256}\n"
         f"  pages: {artifact.page_count}"
@@ -722,8 +757,14 @@ and is provided inline in the human message under
   - lookup_regional_laws           (citation-backed legal dossier)
   - filter_to_fishing_vessels      (GFW vessel-identity for the closest 15 AIS)
   - find_historical_vessels_in_region [FISHING, last 90 d]   (events fallback)
+  - NEAREST_PORT                  (closest port to the incident, GFW or static)
 Do NOT re-call any of these tools — their results are inline above and are
-authoritative. (They are still registered as tools only as a fallback for
+authoritative.
+
+When you call render_evidence_pdf, ALWAYS pass the prefetched NEAREST_PORT
+fields as port_name / port_country / port_locode. The PDF cover page is
+addressed to that port authority. If NEAREST_PORT lookup failed, omit them
+and the renderer will resolve a default. (They are still registered as tools only as a fallback for
 adversarial cases.)
 
 Compute the dark-target gap from the prefetched turn-1 data:
@@ -800,6 +841,8 @@ Turn 3 — CONDITIONAL: render a combined legal PDF only if the case is prosecut
       citing the SPECIFIC indicators that triggered the gate
     - vessel_name, vessel_flag, vessel_imo, gear_type, length_m, last_seen_iso,
       eez_country: pass whatever you have, None otherwise
+    - port_name, port_country, port_locode: copy from the prefetched
+      NEAREST_PORT block — the PDF + downstream call are addressed to this port
     - events_json: optional JSON list of evidentiary events
   The tool refuses LOW / INSUFFICIENT_DATA — do not try to bypass the gate.
 
@@ -946,6 +989,27 @@ def _fetch_ais_once(
         return []
 
 
+def _fetch_nearest_port(latitude: float, longitude: float) -> dict | None:
+    """Resolve the nearest port to (lat, lon). GFW PORT_VISIT first, static fallback."""
+    try:
+        return find_nearest_port(latitude, longitude)
+    except Exception:
+        return None
+
+
+def _format_nearest_port(port: dict | None) -> str:
+    if not port:
+        return "NEAREST_PORT: lookup failed — no port resolved."
+    locode = port.get("un_locode") or "?"
+    return (
+        f"NEAREST_PORT: {port.get('name')} ({locode}) | "
+        f"country={port.get('country')} | "
+        f"position=({port.get('lat')}, {port.get('lon')}) | "
+        f"distance={port.get('distance_mi')} mi | "
+        f"source={port.get('source')}"
+    )
+
+
 def _fetch_historical_fishing(
     latitude: float, longitude: float, radius_miles: float, days_back: int = 90
 ) -> str:
@@ -995,7 +1059,7 @@ def _prefetch_turn1(
         except Exception as exc:
             return f"({label} prefetch failed: {exc!s})"
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=5) as pool:
         ais_fut = pool.submit(_fetch_ais_once, latitude, longitude, radius_miles)
         sar_fut = pool.submit(
             find_dark_targets_in_region.invoke,
@@ -1012,6 +1076,7 @@ def _prefetch_turn1(
         hist_fut = pool.submit(
             _fetch_historical_fishing, latitude, longitude, radius_miles
         )
+        port_fut = pool.submit(_fetch_nearest_port, latitude, longitude)
 
         try:
             ais_vessels = ais_fut.result()
@@ -1031,12 +1096,19 @@ def _prefetch_turn1(
         else:
             resolved = {}
 
+        try:
+            port = port_fut.result()
+        except Exception:
+            port = None
+
         return {
             "ais": ais_str,
             "sar": _safe(sar_fut, "find_dark_targets_in_region"),
             "law": _safe(law_fut, "lookup_regional_laws"),
             "fishing_filter": _format_prefetched_fishing_filter(candidates, resolved),
             "historical_fishing": _safe(hist_fut, "find_historical_vessels_in_region"),
+            "nearest_port": _format_nearest_port(port),
+            "_port": port,  # raw dict; consumed by evaluate_incident, not the LLM
         }
 
 
@@ -1070,6 +1142,7 @@ def evaluate_incident(
         f"--- filter_to_fishing_vessels (prefetched) ---\n{prefetch['fishing_filter']}\n\n"
         f"--- find_historical_vessels_in_region [FISHING, last 90 d] (prefetched) ---\n"
         f"{prefetch['historical_fishing']}\n\n"
+        f"--- NEAREST_PORT (prefetched) ---\n{prefetch['nearest_port']}\n\n"
         "Now apply the FISHING-VESSEL GATE on the FISHING_FILTER block. If "
         "PASS_TO_CLASSIFIER is non-empty, call classify_vessels_iuu_batch on "
         "exactly that list. If it is empty and AIS is silent (zero broadcasts), "
@@ -1091,6 +1164,13 @@ def evaluate_incident(
 
 _PDF_PATH_RE = re.compile(r"path:\s*(.+\.pdf)\s*$", re.MULTILINE | re.IGNORECASE)
 _CASE_ID_RE = re.compile(r"case_id=([A-Za-z0-9_\-]+)")
+_MMSI_RE = re.compile(r"^\s*mmsi:\s*([0-9]+)\s*$", re.MULTILINE | re.IGNORECASE)
+_VESSEL_NAME_RE = re.compile(r"^\s*vessel_name:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+_VESSEL_FLAG_RE = re.compile(r"^\s*vessel_flag:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+_DOC_RE = re.compile(r"^\s*doc:\s*(.+\.pdf)\s*$", re.MULTILINE | re.IGNORECASE)
+_PORT_NAME_RE = re.compile(r"^\s*port_name:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+_PORT_COUNTRY_RE = re.compile(r"^\s*port_country:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+_PORT_LOCODE_RE = re.compile(r"^\s*port_locode:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
 
 
 def _parse_pipeline_artifacts(summary: str) -> dict:
@@ -1103,16 +1183,43 @@ def _parse_pipeline_artifacts(summary: str) -> dict:
     count as risk; that is the pipeline correctly skipping a clean case.
     """
     rendered = "EVIDENCE_PDF_RENDERED" in summary
-    pdf_path: str | None = None
-    case_id: str | None = None
-    if rendered:
-        path_match = _PDF_PATH_RE.search(summary)
-        if path_match:
-            pdf_path = path_match.group(1).strip()
-        case_match = _CASE_ID_RE.search(summary)
-        if case_match:
-            case_id = case_match.group(1).strip()
-    return {"risk": rendered, "pdf_path": pdf_path, "case_id": case_id}
+    out: dict = {
+        "risk": rendered,
+        "pdf_path": None,
+        "case_id": None,
+        "mmsi": None,
+        "vessel_name": None,
+        "vessel_flag": None,
+        "doc_filename": None,
+        "port_name": None,
+        "port_country": None,
+        "port_locode": None,
+    }
+    if not rendered:
+        return out
+
+    block_start = summary.find("EVIDENCE_PDF_RENDERED")
+    block = summary[block_start:] if block_start >= 0 else summary
+
+    if (m := _PDF_PATH_RE.search(block)):
+        out["pdf_path"] = m.group(1).strip()
+    if (m := _CASE_ID_RE.search(block)):
+        out["case_id"] = m.group(1).strip()
+    if (m := _MMSI_RE.search(block)):
+        out["mmsi"] = m.group(1).strip()
+    if (m := _VESSEL_NAME_RE.search(block)):
+        out["vessel_name"] = m.group(1).strip()
+    if (m := _VESSEL_FLAG_RE.search(block)):
+        out["vessel_flag"] = m.group(1).strip()
+    if (m := _DOC_RE.search(block)):
+        out["doc_filename"] = m.group(1).strip()
+    if (m := _PORT_NAME_RE.search(block)):
+        out["port_name"] = m.group(1).strip()
+    if (m := _PORT_COUNTRY_RE.search(block)):
+        out["port_country"] = m.group(1).strip()
+    if (m := _PORT_LOCODE_RE.search(block)):
+        out["port_locode"] = m.group(1).strip()
+    return out
 
 
 def evaluate_incident_structured(

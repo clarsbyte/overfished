@@ -121,9 +121,59 @@ def _build_context(case: CaseFile, doc_type: DocType, sha256: str) -> dict:
         {"instrument": c.instrument, "role_text": _role_text(c)} for c in (case.citations or [])
     ]
 
-    # Pick the predicted port for the port_inspection_order
+    # Resolve the recipient port. Priority:
+    #   1. case.notified_port — JSON-encoded {name, country, un_locode, lat, lon, ...}
+    #      set by pipeline_agent when find_nearest_port returns a result.
+    #   2. legacy fallback: hardcoded Port of Manta for the port_inspection_order doc.
     port_ctx: dict = {}
-    if doc_type == "port_inspection_order":
+    if case.notified_port:
+        import json as _json
+        try:
+            parsed = _json.loads(case.notified_port)
+            if isinstance(parsed, dict) and parsed.get("name"):
+                country = parsed.get("country") or ""
+                country_full = {
+                    "PHL": "Republic of the Philippines",
+                    "ECU": "Republic of Ecuador",
+                    "PER": "Republic of Peru",
+                    "USA": "United States of America",
+                    "CAN": "Canada",
+                    "CHN": "People's Republic of China",
+                    "JPN": "Japan",
+                    "KOR": "Republic of Korea",
+                    "IDN": "Republic of Indonesia",
+                    "VNM": "Socialist Republic of Vietnam",
+                    "TWN": "Taiwan",
+                    "ESP": "Spain",
+                    "PRT": "Portugal",
+                    "FRA": "France",
+                    "GBR": "United Kingdom",
+                    "NOR": "Norway",
+                    "ISL": "Iceland",
+                    "ZAF": "South Africa",
+                    "SEN": "Senegal",
+                    "AUS": "Australia",
+                    "NZL": "New Zealand",
+                    "CHL": "Chile",
+                    "MEX": "Mexico",
+                    "BRA": "Brazil",
+                    "ARG": "Argentina",
+                    "IND": "India",
+                    "SGP": "Singapore",
+                    "MYS": "Malaysia",
+                    "THA": "Thailand",
+                }.get(country, country)
+                port_ctx = {
+                    "name": parsed["name"],
+                    "country": country,
+                    "country_full": country_full,
+                }
+                if parsed.get("un_locode"):
+                    port_ctx["un_locode"] = parsed["un_locode"]
+        except (ValueError, TypeError):
+            # notified_port wasn't JSON — treat as a plain port name
+            port_ctx = {"name": case.notified_port}
+    if not port_ctx and doc_type == "port_inspection_order":
         port_ctx = {
             "name": "Port of Manta",
             "un_locode": "EC MEC",
