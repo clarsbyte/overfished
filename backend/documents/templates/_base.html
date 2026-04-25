@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{% block title %}{{ doc_title }} — {{ case.case_id }}{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&family=Allura&display=swap" rel="stylesheet">
+<style>
+{% include '_styles.css' %}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="watermark">{% block watermark %}OFFICIAL{% endblock %}</div>
+
+  <div class="stripe">{% block stripe_text %}{{ doc_title }}{% endblock %}</div>
+
+  <header>
+    <div class="letterhead-left">
+      {% include 'assets/seal.svg' %}
+      <div class="agency-stack">
+        <div class="primary-agency">{{ agency.primary_es | default('Dirección del Parque Nacional Galápagos') }}</div>
+        <div class="primary-agency-en">{{ agency.primary_en | default('Galápagos National Park Directorate') }}</div>
+        <div class="agency-divider"></div>
+        <div class="coop-label">In coordination with</div>
+        <div class="coop-agencies">
+          {{ agency.coop_html | default('Food and Agriculture Organization of the United Nations<br>Inter-American Tropical Tuna Commission (IATTC)') | safe }}
+        </div>
+      </div>
+    </div>
+
+    <div class="reference-block">
+      <div class="ref-label">Document Reference</div>
+      <table class="ref-table">
+        <tr><td>Case Number</td><td>{{ case.case_id }}</td></tr>
+        <tr><td>File Reference</td><td>{{ ref.file_reference | default('GAL-MR-26-0142') }}</td></tr>
+        <tr><td>Issued</td><td>{{ ref.issued | default('2026-04-24') }}</td></tr>
+        <tr><td>Place of Issue</td><td>{{ ref.place | default('Puerto Ayora, EC') }}</td></tr>
+        {% block reference_legal_basis %}
+        <tr><td>Legal Basis</td><td>PSMA Art. 9</td></tr>
+        <tr><td></td><td>LOREG Art. 75</td></tr>
+        {% endblock %}
+        <tr><td>Classification</td><td>{{ ref.classification | default('Civil — Tier II') }}</td></tr>
+      </table>
+    </div>
+  </header>
+
+  <div class="subject">
+    <span class="subject-label">{% block subject_label %}RE:{% endblock %}</span>
+    {% block subject %}{{ doc_title }}{% endblock %}
+  </div>
+
+  {% block recipient %}
+  <div class="recipient">
+    <span class="label">To: Master and Owner of Record</span>
+    Fishing Vessel <strong>{{ case.vessel.name | default(case.vessel.mmsi) }}</strong><br>
+    MMSI <span class="mono">{{ case.vessel.mmsi }}</span>
+    {% if case.vessel.imo %} &nbsp;·&nbsp; IMO <span class="mono">{{ case.vessel.imo }}</span>{% endif %}
+    {% if case.vessel.call_sign %} &nbsp;·&nbsp; Call Sign <span class="mono">{{ case.vessel.call_sign }}</span>{% endif %}<br>
+    {% if case.vessel.flag %}Flag State: {{ flag_full_name }}<br>{% endif %}
+    {% if last_position_dms %}Last Known Position: <span class="mono">{{ last_position_dms }}</span> (recorded {{ last_seen_human }})<br>{% endif %}
+    <div class="served">{% block served_note %}Served via flag-state notification (CHN MSA) and PSMA Art. 7 information exchange chain.{% endblock %}</div>
+  </div>
+  {% endblock %}
+
+  {% block body %}{% endblock %}
+
+  <div class="signature-block">
+    <div class="signature">
+      <div class="script-signature">{{ signatory.script_name | default('Luis A. Sandoval') }}</div>
+      <div class="signature-line"></div>
+      <div class="signed-name">{{ signatory.full_name | default('Dr. Luis A. Sandoval, M.Sc.') }}</div>
+      <div class="signed-title">{{ signatory.title | default('Director, Marine Enforcement Unit') }}</div>
+      <div class="signed-agency">{{ signatory.agency | default('Galápagos National Park Directorate') }}</div>
+      <div class="signed-meta">
+        Issued: {{ signatory.issued_iso | default('2026-04-24 · 14:18 UTC') }}<br>
+        {{ signatory.location | default('Puerto Ayora, Galápagos, Ecuador') }}
+      </div>
+    </div>
+
+    {% include 'assets/stamp.svg' %}
+  </div>
+
+  <footer>
+    <div class="footer-left">
+      <div class="footer-hash">
+        <span class="label">SHA-256</span>{{ sha256_placeholder }}
+      </div>
+      <div>{{ footer.address | default('Galápagos National Park Directorate · Marine Enforcement Unit · Av. Charles Darwin s/n, Puerto Ayora · Galápagos · Ecuador') }}</div>
+      <div>{{ footer.contact | default('Inquiries: enforcement@galapagospark.gob.ec · +593 5 252-6189') }}</div>
+    </div>
+    <div class="footer-right">
+      Page {{ page_number | default(1) }} of {{ page_total | default(1) }}<br>
+      Doc. v{{ doc_version | default('1.0') }}
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

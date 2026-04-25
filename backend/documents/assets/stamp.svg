@@ -1,0 +1,16 @@
+<svg class="stamp" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="60" cy="60" r="56" fill="none" stroke="#7d3340" stroke-width="2.5"/>
+  <circle cx="60" cy="60" r="50" fill="none" stroke="#7d3340" stroke-width="0.8"/>
+  <defs>
+    <path id="stampTop" d="M 16,60 A 44,44 0 0 1 104,60" fill="none"/>
+    <path id="stampBot" d="M 22,66 A 38,38 0 0 0 98,66" fill="none"/>
+  </defs>
+  <text font-family="EB Garamond, serif" font-size="7" font-weight="700" fill="#7d3340" letter-spacing="0.6">
+    <textPath href="#stampTop" startOffset="50%" text-anchor="middle">{{ stamp_top_text | default('APPROVED &nbsp;·&nbsp; ENFORCEMENT') }}</textPath>
+  </text>
+  <text font-family="EB Garamond, serif" font-size="6" font-weight="500" fill="#7d3340" letter-spacing="0.4">
+    <textPath href="#stampBot" startOffset="50%" text-anchor="middle">{{ stamp_bottom_text | default('2026-04-24 · GAL-MR') }}</textPath>
+  </text>
+  <text x="60" y="58" text-anchor="middle" font-family="EB Garamond, serif" font-size="14" font-weight="700" fill="#7d3340" letter-spacing="0.15em">CASE</text>
+  <text x="60" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600" fill="#7d3340">{{ stamp_case_number | default('001847') }}</text>
+</svg>

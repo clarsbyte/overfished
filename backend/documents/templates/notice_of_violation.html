@@ -1,0 +1,106 @@
+{% extends '_base.html' %}
+
+{% block stripe_text %}Notice of Violation — Civil Penalty Assessment{% endblock %}
+
+{% block subject %}
+  Unauthorized Fishing Activity within the {{ case.region.name }} —
+  Civil Penalty Assessment and Order to Cease Operations
+{% endblock %}
+
+{% block body %}
+  <section>
+    <h2><span class="roman">I.</span> Findings of Fact</h2>
+    <ol class="legal-list">
+      {% for finding in findings %}
+        <li><span class="lead">Whereas,</span> {{ finding | safe }}</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">II.</span> Determination and Order</h2>
+    <p style="margin-top: 0;">
+      Based upon the foregoing Findings of Fact, and acting under authority delegated pursuant to the
+      Organic Law of the Special Regime for the Province of Galápagos (LOREG), the undersigned hereby
+      <strong>DETERMINES AND ORDERS</strong> as follows:
+    </p>
+
+    <ol class="legal-list">
+      <li><span class="lead">Now therefore,</span> the Master and Owner of <strong>FV {{ case.vessel.name }}</strong> are hereby <strong>NOTIFIED</strong> of violations of the following instruments:
+        <ol class="sublist">
+          {% for cite in violations_cited %}
+            <li><span class="cite">{{ cite.instrument }}</span> — {{ cite.role_text }};</li>
+          {% endfor %}
+        </ol>
+      </li>
+
+      <li><span class="lead">Now therefore,</span> a <strong>CIVIL PENALTY in the amount of USD ${{ '{:,.2f}'.format(case.fine.total_fine_usd) }}</strong> is hereby <strong>ASSESSED</strong> against the Owner of the subject vessel, with the breakdown set forth in <strong>Schedule A</strong> below;</li>
+
+      <li><span class="lead">Now therefore,</span> the subject vessel is <strong>ORDERED</strong> to (a) cease all fishing operations immediately, (b) re-enable AIS transmission continuously, and (c) exit the {{ case.region.name }} via the most direct course, with all such actions to be verified by satellite tracking;</li>
+
+      <li><span class="lead">Now therefore,</span> pursuant to <span class="cite">PSMA Article 9</span>, the Government of Ecuador has formally notified the Port of Manta (UN/LOCODE <span class="mono">EC MEC</span>) and the Port of Callao (UN/LOCODE <span class="mono">PE CLL</span>) of these violations, and has requested denial of port entry and inspection-on-arrival;</li>
+
+      <li><span class="lead">Now therefore,</span> the Owner shall respond in writing within <strong>thirty (30) days</strong> of issuance of this notice. Failure to respond shall result in (a) referral to the Republic of Ecuador's Public Prosecutor's Office, (b) inclusion on the IATTC IUU Vessel List, and (c) notification of the flag state's competent authorities under <span class="cite">FAO Compliance Agreement, Article III</span>.</li>
+    </ol>
+  </section>
+
+  <div class="schedule-header">
+    <span class="schedule-label">Schedule A</span>
+    <span class="schedule-title">Civil Penalty Assessment</span>
+  </div>
+
+  <table class="penalty-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Description of Offense</th>
+        <th class="legal-col">Legal Basis</th>
+        <th class="amount-col">Amount (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in case.fine.line_items %}
+        <tr>
+          <td>{{ '{:02d}'.format(loop.index) }}</td>
+          <td>{{ item.description }}</td>
+          <td class="legal-cite">{% for c in item.legal_basis %}{{ c.instrument }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+          <td class="amount">${{ '{:,.2f}'.format(item.amount_usd) }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="subtotal">
+        <td colspan="3">Subtotal — base penalty</td>
+        <td class="amount">${{ '{:,.2f}'.format(case.fine.subtotal_usd) }}</td>
+      </tr>
+      {% if case.fine.multipliers.recidivism and case.fine.multipliers.recidivism != 1.0 %}
+        {% set recid_amt = case.fine.subtotal_usd * (case.fine.multipliers.recidivism - 1) %}
+        <tr class="subtotal">
+          <td colspan="3">Recidivism multiplier — prior documented offense<br>
+            <span class="legal-cite" style="font-style:italic;">per LOREG Art. 78</span> &nbsp;×&nbsp; {{ case.fine.multipliers.recidivism }}
+          </td>
+          <td class="amount">+ ${{ '{:,.2f}'.format(recid_amt) }}</td>
+        </tr>
+      {% endif %}
+      <tr class="subtotal">
+        <td colspan="3">Voluntary cooperation credit (none claimed)</td>
+        <td class="amount">$0.00</td>
+      </tr>
+      <tr class="total">
+        <td colspan="3">Total Civil Penalty</td>
+        <td class="amount">${{ '{:,.2f}'.format(case.fine.total_fine_usd) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <section>
+    <h2><span class="roman">III.</span> Rights and Response</h2>
+    <div class="response-box">
+      <p style="margin-top: 0;">The Owner is entitled to (i) inspect all evidence underlying this assessment, (ii) submit a written defense within the response period, and (iii) request administrative review by the Galápagos National Park Directorate's Enforcement Tribunal.</p>
+      <p style="margin-bottom: 0;">
+        <span class="deadline">RESPONSE DEADLINE: {{ response_deadline | default('24 May 2026') }} (30 days from issuance).</span>
+        Payment instructions and the complete evidence dossier (Case File <span class="mono">{{ ref.file_reference | default('GAL-MR-26-0142') }}</span>, SHA-256 verified) are transmitted under separate cover.
+      </p>
+    </div>
+  </section>
+{% endblock %}

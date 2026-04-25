@@ -1,0 +1,50 @@
+[
+  {
+    "instrument": "UNCLOS Article 73",
+    "layer": "international",
+    "full_title": "United Nations Convention on the Law of the Sea (1982)",
+    "role": "authority",
+    "excerpt": "The coastal State may, in the exercise of its sovereign rights to explore, exploit, conserve and manage the living resources in the exclusive economic zone, take such measures, including boarding, inspection, arrest and judicial proceedings, as may be necessary to ensure compliance with the laws and regulations adopted by it...",
+    "source_url": "https://www.un.org/depts/los/convention_agreements/texts/unclos/part5.htm"
+  },
+  {
+    "instrument": "PSMA Article 9(4)",
+    "layer": "international",
+    "full_title": "FAO Agreement on Port State Measures to Prevent, Deter and Eliminate Illegal, Unreported and Unregulated Fishing (2009)",
+    "role": "authority",
+    "excerpt": "When a Party has sufficient proof that a vessel seeking entry into its port has engaged in IUU fishing or fishing related activities in support of such fishing, that Party shall deny that vessel entry into its ports...",
+    "source_url": "https://www.fao.org/port-state-measures"
+  },
+  {
+    "instrument": "LOREG Article 75",
+    "layer": "national",
+    "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+    "role": "penalty",
+    "excerpt": "Foreign vessels engaging in unauthorized fishing within the Galápagos Marine Reserve shall be subject to civil penalties commensurate with the value of the catch and the gravity of the violation, with multipliers for prior offenses.",
+    "source_url": "https://faolex.fao.org/docs/texts/ecu/loreg.txt"
+  },
+  {
+    "instrument": "IATTC Resolution C-19-01 §4",
+    "layer": "rfmo",
+    "full_title": "Inter-American Tropical Tuna Commission Resolution C-19-01 — Regional Vessel Register",
+    "role": "operational",
+    "excerpt": "Each CPC shall ensure that vessels flying its flag and operating in the Convention Area are listed on the IATTC Regional Vessel Register; vessels not so listed shall be considered to be engaged in IUU fishing.",
+    "source_url": "https://www.iattc.org/PDFFiles/Resolutions/IATTC/_English/C-19-01-Active_Vessel-Registry.pdf"
+  },
+  {
+    "instrument": "SOLAS Chapter V Regulation 19",
+    "layer": "international",
+    "full_title": "International Convention for the Safety of Life at Sea, Chapter V Regulation 19 — Carriage requirements for shipborne navigational systems and equipment",
+    "role": "operational",
+    "excerpt": "All ships of 300 gross tonnage and upwards engaged on international voyages shall be fitted with an automatic identification system (AIS); the AIS shall be in operation at all times except where international agreements, rules or standards provide for the protection of navigational information.",
+    "source_url": "https://www.imo.org/en/OurWork/Safety/Pages/SOLAS-V.aspx"
+  },
+  {
+    "instrument": "IPOA-IUU paragraph 3",
+    "layer": "voluntary",
+    "full_title": "FAO International Plan of Action to Prevent, Deter and Eliminate Illegal, Unreported and Unregulated Fishing (2001)",
+    "role": "definitional",
+    "excerpt": "Illegal fishing refers to activities conducted by national or foreign vessels in waters under the jurisdiction of a State, without the permission of that State, or in contravention of its laws and regulations.",
+    "source_url": "https://www.fao.org/3/y1224e/y1224e00.htm"
+  }
+]

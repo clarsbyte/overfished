@@ -1,0 +1,76 @@
+[
+  {
+    "event_id": "evt-412345678-port-callao-2024",
+    "mmsi": "412345678",
+    "type": "PORT_VISIT",
+    "start": "2024-09-03T08:14:00+00:00",
+    "end": "2024-09-04T19:42:00+00:00",
+    "position": { "lat": -12.0464, "lon": -77.1428 },
+    "duration_hours": 35.47,
+    "metadata": {
+      "port_name": "Callao",
+      "un_locode": "PE CLL",
+      "country": "PER",
+      "purpose": "transshipment",
+      "prior_offense": true,
+      "incident_note": "Documented AIS-disabling event in Peruvian EEZ on this transit. Reported by Peruvian Coast Guard."
+    }
+  },
+  {
+    "event_id": "evt-412345678-fishing-2026-04-17",
+    "mmsi": "412345678",
+    "type": "FISHING",
+    "start": "2026-04-17T22:10:00+00:00",
+    "end": "2026-04-18T03:30:00+00:00",
+    "position": { "lat": -1.62, "lon": -91.32 },
+    "duration_hours": 5.33,
+    "metadata": {
+      "gear": "pelagic_longline",
+      "mean_speed_kn": 3.2,
+      "course_variance_deg": 41
+    }
+  },
+  {
+    "event_id": "evt-412345678-gap-2026-04-18",
+    "mmsi": "412345678",
+    "type": "GAP",
+    "start": "2026-04-18T03:42:00+00:00",
+    "end": "2026-04-18T11:27:00+00:00",
+    "position": { "lat": -1.5383, "lon": -91.145 },
+    "duration_hours": 7.75,
+    "metadata": {
+      "reason": "AIS transmission disabled inside Galápagos Marine Reserve",
+      "boundary_distance_nm": 4.2,
+      "transit_distance_nm": 86,
+      "regulatory_basis": "SOLAS Ch. V Reg. 19",
+      "sar_corroboration": "Sentinel-1A 06:14 UTC"
+    }
+  },
+  {
+    "event_id": "evt-412345678-loiter-2026-04-18",
+    "mmsi": "412345678",
+    "type": "LOITERING",
+    "start": "2026-04-18T05:50:00+00:00",
+    "end": "2026-04-18T07:40:00+00:00",
+    "position": { "lat": -1.1344, "lon": -90.8592 },
+    "duration_hours": 1.83,
+    "metadata": {
+      "inferred_from": "SAR detection within MPA Zone 2.1",
+      "mean_speed_kn": 1.4
+    }
+  },
+  {
+    "event_id": "evt-412345678-fishing-2026-04-18-late",
+    "mmsi": "412345678",
+    "type": "FISHING",
+    "start": "2026-04-18T11:40:00+00:00",
+    "end": "2026-04-18T14:18:00+00:00",
+    "position": { "lat": -0.81, "lon": -90.32 },
+    "duration_hours": 2.63,
+    "metadata": {
+      "gear": "pelagic_longline",
+      "mean_speed_kn": 3.6,
+      "note": "Resumed AIS, continuing fishing pattern outside protected zone."
+    }
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "total": 1,
+  "limit": null,
+  "offset": null,
+  "nextOffset": null,
+  "metadata": {},
+  "entries": [
+    {
+      "public-global-presence:v3.0": [
+        {"date": "2026-04-18 00:00", "vesselId": "demo-A", "mmsi": "412345678", "shipName": "LU RONG YUAN YU 666", "flag": "CHN", "lat": -1.5, "lon": -91.1, "hours": 1.0},
+        {"date": "2026-04-18 01:00", "vesselId": "demo-A", "mmsi": "412345678", "shipName": "LU RONG YUAN YU 666", "flag": "CHN", "lat": -1.4, "lon": -91.0, "hours": 1.0},
+        {"date": "2026-04-18 02:00", "vesselId": "demo-A", "mmsi": "412345678", "shipName": "LU RONG YUAN YU 666", "flag": "CHN", "lat": -1.3, "lon": -90.9, "hours": 1.0},
+        {"date": "2026-04-18 03:00", "vesselId": "demo-A", "mmsi": "412345678", "shipName": "LU RONG YUAN YU 666", "flag": "CHN", "lat": -1.2, "lon": -90.8, "hours": 1.0},
+        {"date": "2026-04-18 00:00", "vesselId": "demo-B", "mmsi": "725003402", "shipName": "ANTARTICA", "flag": "ARG", "lat": -47.0, "lon": -60.0, "hours": 1.0},
+        {"date": "2026-04-18 01:00", "vesselId": "demo-B", "mmsi": "725003402", "shipName": "ANTARTICA", "flag": "ARG", "lat": -47.1, "lon": -60.1, "hours": 1.0},
+        {"date": "2026-04-18 02:00", "vesselId": "demo-B", "mmsi": "725003402", "shipName": "ANTARTICA", "flag": "ARG", "lat": -47.2, "lon": -60.2, "hours": 1.0},
+        {"date": "2026-04-18 00:00", "vesselId": "demo-C-too-short", "mmsi": "111111111", "shipName": "TINY", "flag": "USA", "lat": 0.0, "lon": 0.0, "hours": 1.0},
+        {"date": "2026-04-18 00:00", "vesselId": "demo-D-no-coords", "mmsi": "222222222", "shipName": "GHOST", "flag": "USA", "lat": null, "lon": null, "hours": 1.0}
+      ]
+    }
+  ]
+}

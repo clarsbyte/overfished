@@ -1,0 +1,111 @@
+{% extends '_base.html' %}
+
+{% block stripe_text %}Evidence Package — Case File {{ case.case_id }}{% endblock %}
+
+{% block subject %}
+  Evidence Bundle for Civil and Administrative Proceedings — Case {{ case.case_id }}
+{% endblock %}
+
+{% block reference_legal_basis %}
+  <tr><td>Classification</td><td>Evidence — Internal</td></tr>
+  <tr><td>Chain of Custody</td><td>SHA-256 anchored</td></tr>
+{% endblock %}
+
+{% block body %}
+  <section>
+    <h2><span class="roman">I.</span> Vessel Identity Card</h2>
+    <table class="ref-table" style="font-size: 9.5pt; width: 100%;">
+      <tr><td>Vessel Name</td><td>{{ case.vessel.name | default('—') }}</td></tr>
+      <tr><td>MMSI</td><td><span class="mono">{{ case.vessel.mmsi }}</span></td></tr>
+      <tr><td>IMO</td><td><span class="mono">{{ case.vessel.imo | default('—') }}</span></td></tr>
+      <tr><td>Flag State</td><td>{{ case.vessel.flag | default('—') }}</td></tr>
+      <tr><td>Gear Type</td><td>{{ case.vessel.gear_type | default('—') }}</td></tr>
+      <tr><td>Length (m)</td><td>{{ case.vessel.length_m | default('—') }}</td></tr>
+      <tr><td>Owner of Record</td><td>{{ case.vessel.owner | default('—') }}</td></tr>
+      <tr><td>Authorizations</td><td>{{ case.vessel.authorizations | join(', ') if case.vessel.authorizations else '— (unregistered)' }}</td></tr>
+      <tr><td>Last Position</td><td>{{ last_position_dms | default('—') }}</td></tr>
+      <tr><td>Last Seen</td><td>{{ last_seen_human | default('—') }}</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="roman">II.</span> Event Timeline</h2>
+    <table class="ref-table" style="font-size: 9pt; width: 100%;">
+      <tr style="border-bottom: 1px solid #c4c0b0;">
+        <td style="width: 18%;">Type</td>
+        <td style="width: 26%;">Start (UTC)</td>
+        <td style="width: 26%;">End (UTC)</td>
+        <td style="width: 12%; text-align: right;">Duration</td>
+        <td style="width: 18%;">Position</td>
+      </tr>
+      {% for ev in case.events %}
+        <tr>
+          <td><strong>{{ ev.type }}</strong></td>
+          <td><span class="mono">{{ ev.start.isoformat() if ev.start.isoformat is defined else ev.start }}</span></td>
+          <td><span class="mono">{{ ev.end.isoformat() if ev.end and ev.end.isoformat is defined else (ev.end or '—') }}</span></td>
+          <td style="text-align: right;"><span class="mono">{{ '%.2f h'|format(ev.duration_hours) if ev.duration_hours else '—' }}</span></td>
+          <td><span class="mono">{{ '%.4f, %.4f'|format(ev.position.lat, ev.position.lon) }}</span></td>
+        </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="roman">III.</span> CV / Satellite Detections</h2>
+    <table class="ref-table" style="font-size: 9pt; width: 100%;">
+      <tr style="border-bottom: 1px solid #c4c0b0;">
+        <td style="width: 26%;">Detection ID</td>
+        <td style="width: 22%;">Timestamp (UTC)</td>
+        <td style="width: 14%;">Source</td>
+        <td style="width: 14%; text-align: right;">Confidence</td>
+        <td style="width: 24%;">Position</td>
+      </tr>
+      {% for d in case.detections %}
+        <tr>
+          <td><span class="mono">{{ d.detection_id }}</span></td>
+          <td><span class="mono">{{ d.timestamp.isoformat() if d.timestamp.isoformat is defined else d.timestamp }}</span></td>
+          <td>{{ d.source | upper }}</td>
+          <td style="text-align: right;"><span class="mono">{{ '%.2f'|format(d.confidence) }}</span></td>
+          <td><span class="mono">{{ '%.4f, %.4f'|format(d.position.lat, d.position.lon) }}</span></td>
+        </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="roman">IV.</span> Triggered Rules and Citations</h2>
+    <ol class="legal-list">
+      {% for cit in case.citations %}
+        <li>
+          <span class="cite">{{ cit.instrument }}</span>
+          <span style="color: #666; font-size: 9pt;">({{ cit.layer }} · {{ cit.role }})</span><br>
+          <span style="font-size: 9pt; color: #444;">{{ cit.full_title }}</span>
+          {% if cit.excerpt %}<br><em style="font-size: 9pt; color: #555;">"{{ cit.excerpt }}"</em>{% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">V.</span> Risk Assessment Summary</h2>
+    <div class="response-box">
+      {% if case.risk %}
+        <p style="margin-top: 0;">
+          <strong>Classification:</strong> {{ case.risk.classification | upper }} &nbsp;·&nbsp;
+          <strong>Score:</strong> <span class="mono">{{ '%.2f'|format(case.risk.risk_score) }}</span> &nbsp;·&nbsp;
+          <strong>Triggered rules:</strong> <span class="mono">{{ case.risk.triggered_rules | length }}</span>
+        </p>
+        <p style="margin-bottom: 0; font-style: italic;">{{ case.risk.reasoning }}</p>
+      {% else %}
+        <p style="margin: 0; font-style: italic; color: #777;">Risk assessment pending.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="roman">VI.</span> Chain of Custody</h2>
+    <p style="margin-top: 0;">
+      This evidence package is anchored to a SHA-256 hash printed in the footer of every page. The hash is computed over the final PDF bytes after rendering, so any modification — content, formatting, metadata — breaks verification. Independent verification: <span class="mono">shasum -a 256 evidence_package.pdf</span> equals the footer value.
+    </p>
+  </section>
+{% endblock %}

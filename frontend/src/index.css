@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Tabular figures for any class="tabular" — used on count-up numbers */
+.tabular {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* react-globe.gl needs its container to have explicit dimensions */
+.globe-host {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
