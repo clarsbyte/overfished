@@ -9,6 +9,7 @@ const DOC_LABELS: Record<DocumentArtifact["doc_type"], string> = {
   cease_and_desist_order: "Cease and Desist Order",
   port_inspection_order: "Port State Inspection Order",
   evidence_package: "Evidence Package",
+  combined_legal_package: "Combined Legal Package",
 };
 
 const REVEAL_DELAY_MS = 250;

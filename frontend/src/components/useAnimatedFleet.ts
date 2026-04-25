@@ -34,7 +34,7 @@ export interface AnimatedVessel extends FleetVessel {
 }
 
 const FULL_LOOP_SECONDS = 90;
-const TICK_HZ = 30; // re-render rate; 30 fps looks smooth and is half the cost of 60
+const TICK_HZ = 15; // re-render rate; 15 fps still reads as smooth motion at this scale
 
 export function useAnimatedFleet(fleet: FleetVessel[] | undefined): AnimatedVessel[] {
   // Stable per-vessel object array. Mutated in place; only reseeded when the
@@ -58,6 +58,8 @@ export function useAnimatedFleet(fleet: FleetVessel[] | undefined): AnimatedVess
   }, [fleet]);
 
   // RAF + interval combo: animate in lock-step but only nudge React at TICK_HZ.
+  // Also pauses entirely while the tab is hidden (no point burning CPU when
+  // nobody is watching the globe).
   useEffect(() => {
     if (!fleet || fleet.length === 0) return;
 
@@ -91,7 +93,6 @@ export function useAnimatedFleet(fleet: FleetVessel[] | undefined): AnimatedVess
         v.heading = bearing(a[0], a[1], b[0], b[1]);
       }
 
-      // Throttle React re-renders to TICK_HZ
       if (now - lastReact >= reactInterval) {
         lastReact = now;
         setTick((tk) => tk + 1);
@@ -100,8 +101,27 @@ export function useAnimatedFleet(fleet: FleetVessel[] | undefined): AnimatedVess
       raf = requestAnimationFrame(tick);
     };
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const start = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(tick);
+    };
+    const stop = () => {
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") stop();
+      else start();
+    };
+
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [fleet]);
 
   return animatedRef.current;
