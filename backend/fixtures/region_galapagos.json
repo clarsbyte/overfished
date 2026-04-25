@@ -1,0 +1,21 @@
+{
+  "region_id": "galapagos",
+  "name": "Galápagos Marine Reserve",
+  "polygon_geojson": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [-92.0, 2.0],
+        [-89.0, 2.0],
+        [-89.0, -2.0],
+        [-92.0, -2.0],
+        [-92.0, 2.0]
+      ]
+    ]
+  },
+  "eez_country": "ECU",
+  "mpa_wdpa_ids": [11765],
+  "rfmo_ids": ["IATTC"],
+  "centroid": { "lat": 0.0, "lon": -90.5 },
+  "area_km2": 133000.0
+}

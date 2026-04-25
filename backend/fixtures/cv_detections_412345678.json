@@ -1,0 +1,42 @@
+[
+  {
+    "detection_id": "det-sar-s1a-2026-04-18-0614",
+    "timestamp": "2026-04-18T06:14:00+00:00",
+    "position": { "lat": -1.1344, "lon": -90.8592 },
+    "confidence": 0.94,
+    "estimated_length_m": 56.0,
+    "matched_mmsi": "412345678",
+    "source": "sar",
+    "image_url": "https://res.cloudinary.com/overfish-demo/image/upload/sar/s1a-2026-04-18-0614-tile.png"
+  },
+  {
+    "detection_id": "det-sar-s1a-2026-04-18-0512",
+    "timestamp": "2026-04-18T05:12:00+00:00",
+    "position": { "lat": -1.276, "lon": -90.998 },
+    "confidence": 0.88,
+    "estimated_length_m": 55.0,
+    "matched_mmsi": "412345678",
+    "source": "sar",
+    "image_url": "https://res.cloudinary.com/overfish-demo/image/upload/sar/s1a-2026-04-18-0512-tile.png"
+  },
+  {
+    "detection_id": "det-opt-pleiades-2026-04-18-1530",
+    "timestamp": "2026-04-18T15:30:00+00:00",
+    "position": { "lat": -0.62, "lon": -90.18 },
+    "confidence": 0.71,
+    "estimated_length_m": 58.0,
+    "matched_mmsi": "412345678",
+    "source": "optical",
+    "image_url": "https://res.cloudinary.com/overfish-demo/image/upload/optical/pleiades-2026-04-18-1530-tile.png"
+  },
+  {
+    "detection_id": "det-sar-s1a-2026-04-18-0712",
+    "timestamp": "2026-04-18T07:12:00+00:00",
+    "position": { "lat": -0.98, "lon": -90.71 },
+    "confidence": 0.82,
+    "estimated_length_m": 39.0,
+    "matched_mmsi": null,
+    "source": "sar",
+    "image_url": "https://res.cloudinary.com/overfish-demo/image/upload/sar/s1a-2026-04-18-0712-dark.png"
+  }
+]

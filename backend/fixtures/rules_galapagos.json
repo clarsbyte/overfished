@@ -1,0 +1,70 @@
+[
+  {
+    "rule_id": "rule-loreg-75a",
+    "source_doc": "https://faolex.fao.org/docs/texts/ecu/loreg.txt",
+    "jurisdiction": "ECU",
+    "category": "no_take_zone",
+    "description": "Unauthorized fishing within a Galápagos no-take protected zone (Zone 2.1).",
+    "machine_check": {
+      "region_id": "galapagos",
+      "zone": "2.1",
+      "trigger": "vessel_inside_polygon AND has_fishing_event"
+    },
+    "penalty_text": "Civil penalty of USD 80,000 base, with multipliers for prior offenses (×1.25) and AIS-disabling (×1.5)."
+  },
+  {
+    "rule_id": "rule-iattc-c-19-01",
+    "source_doc": "https://www.iattc.org/PDFFiles/Resolutions/IATTC/_English/C-19-01-Active_Vessel-Registry.pdf",
+    "jurisdiction": "IATTC",
+    "category": "license_required",
+    "description": "Vessels operating in IATTC convention area must appear on the Regional Vessel Register (resolution C-19-01).",
+    "machine_check": {
+      "trigger": "vessel.authorizations does not include any IATTC-* entry"
+    },
+    "penalty_text": "Civil penalty of USD 25,000 plus listing on the IATTC IUU Vessel List."
+  },
+  {
+    "rule_id": "rule-solas-v-19",
+    "source_doc": "https://www.imo.org/en/OurWork/Safety/Pages/SOLAS-V.aspx",
+    "jurisdiction": "INT",
+    "category": "ais_required",
+    "description": "Continuous AIS transmission required for all vessels ≥300 GT under SOLAS Chapter V Regulation 19.",
+    "machine_check": {
+      "trigger": "GAP event with duration_hours > 0 inside protected area"
+    },
+    "penalty_text": "Civil penalty of USD 15,000 per incident."
+  },
+  {
+    "rule_id": "rule-psma-9-4",
+    "source_doc": "https://www.fao.org/port-state-measures",
+    "jurisdiction": "INT",
+    "category": "license_required",
+    "description": "Port State must deny entry to vessels engaged in IUU fishing per FAO Port State Measures Agreement Article 9(4).",
+    "machine_check": {
+      "trigger": "RiskAssessment.classification == confirmed_iuu"
+    },
+    "penalty_text": "Denial of port entry; inspection-on-arrival; potential vessel detention."
+  },
+  {
+    "rule_id": "rule-unclos-73",
+    "source_doc": "https://www.un.org/depts/los/convention_agreements/texts/unclos/part5.htm",
+    "jurisdiction": "INT",
+    "category": "license_required",
+    "description": "Coastal-state enforcement rights within exclusive economic zones under UNCLOS Article 73.",
+    "machine_check": {
+      "trigger": "vessel inside EEZ AND vessel.flag != EEZ.country"
+    },
+    "penalty_text": "Authority for boarding, inspection, arrest, and judicial proceedings against the offending vessel."
+  },
+  {
+    "rule_id": "rule-ipoa-iuu",
+    "source_doc": "https://www.fao.org/3/y1224e/y1224e00.htm",
+    "jurisdiction": "INT",
+    "category": "license_required",
+    "description": "Definitional anchor for 'illegal, unreported, and unregulated' fishing (IPOA-IUU paragraph 3).",
+    "machine_check": {
+      "trigger": "any of fishing_without_license, fishing_in_protected_area, ais_disabled_in_protected_area"
+    },
+    "penalty_text": "Voluntary instrument; provides interpretive framework rather than direct penalty."
+  }
+]

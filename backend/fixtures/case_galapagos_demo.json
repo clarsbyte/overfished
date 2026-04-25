@@ -1,0 +1,266 @@
+{
+  "case_id": "IUU-2026-001847",
+  "region": {
+    "region_id": "galapagos",
+    "name": "Galápagos Marine Reserve",
+    "polygon_geojson": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [-92.0, 2.0],
+          [-89.0, 2.0],
+          [-89.0, -2.0],
+          [-92.0, -2.0],
+          [-92.0, 2.0]
+        ]
+      ]
+    },
+    "eez_country": "ECU",
+    "mpa_wdpa_ids": [11765],
+    "rfmo_ids": ["IATTC"],
+    "centroid": { "lat": 0.0, "lon": -90.5 },
+    "area_km2": 133000.0
+  },
+  "vessel": {
+    "mmsi": "412345678",
+    "imo": "8765432",
+    "name": "LU RONG YUAN YU 666",
+    "flag": "CHN",
+    "gear_type": "longliners",
+    "length_m": 56.0,
+    "owner": "Lu Rong Yuan Yu Co., Ltd.",
+    "authorizations": [],
+    "last_position": { "lat": -0.7533, "lon": -90.3689 },
+    "last_seen": "2026-04-18T11:27:00+00:00"
+  },
+  "events": [
+    {
+      "event_id": "evt-412345678-port-callao-2024",
+      "mmsi": "412345678",
+      "type": "PORT_VISIT",
+      "start": "2024-09-03T08:14:00+00:00",
+      "end": "2024-09-04T19:42:00+00:00",
+      "position": { "lat": -12.0464, "lon": -77.1428 },
+      "duration_hours": 35.47,
+      "metadata": {
+        "port_name": "Callao",
+        "un_locode": "PE CLL",
+        "country": "PER",
+        "purpose": "transshipment",
+        "prior_offense": true
+      }
+    },
+    {
+      "event_id": "evt-412345678-gap-2026-04-18",
+      "mmsi": "412345678",
+      "type": "GAP",
+      "start": "2026-04-18T03:42:00+00:00",
+      "end": "2026-04-18T11:27:00+00:00",
+      "position": { "lat": -1.5383, "lon": -91.145 },
+      "duration_hours": 7.75,
+      "metadata": {
+        "reason": "AIS transmission disabled inside Galápagos Marine Reserve",
+        "boundary_distance_nm": 4.2,
+        "transit_distance_nm": 86,
+        "regulatory_basis": "SOLAS Ch. V Reg. 19"
+      }
+    }
+  ],
+  "detections": [
+    {
+      "detection_id": "det-sar-s1a-2026-04-18-0614",
+      "timestamp": "2026-04-18T06:14:00+00:00",
+      "position": { "lat": -1.1344, "lon": -90.8592 },
+      "confidence": 0.94,
+      "estimated_length_m": 56.0,
+      "matched_mmsi": "412345678",
+      "source": "sar",
+      "image_url": "https://res.cloudinary.com/overfish-demo/image/upload/sar/s1a-2026-04-18-0614-tile.png"
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "rule-loreg-75a",
+      "source_doc": "https://faolex.fao.org/docs/texts/ecu/loreg.txt",
+      "jurisdiction": "ECU",
+      "category": "no_take_zone",
+      "description": "Unauthorized fishing within a Galápagos no-take protected zone (Zone 2.1).",
+      "machine_check": {
+        "region_id": "galapagos",
+        "zone": "2.1",
+        "trigger": "vessel_inside_polygon AND has_fishing_event"
+      },
+      "penalty_text": "Civil penalty of USD 80,000 base, with multipliers for prior offenses (×1.25) and AIS-disabling (×1.5)."
+    }
+  ],
+  "citations": [
+    {
+      "instrument": "UNCLOS Article 73",
+      "layer": "international",
+      "full_title": "United Nations Convention on the Law of the Sea (1982)",
+      "role": "authority"
+    },
+    {
+      "instrument": "PSMA Article 9(4)",
+      "layer": "international",
+      "full_title": "FAO Agreement on Port State Measures (2009)",
+      "role": "authority"
+    },
+    {
+      "instrument": "LOREG Article 75",
+      "layer": "national",
+      "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+      "role": "penalty"
+    },
+    {
+      "instrument": "IATTC Resolution C-19-01 §4",
+      "layer": "rfmo",
+      "full_title": "Inter-American Tropical Tuna Commission Resolution C-19-01",
+      "role": "operational"
+    },
+    {
+      "instrument": "SOLAS Chapter V Regulation 19",
+      "layer": "international",
+      "full_title": "International Convention for the Safety of Life at Sea, Chapter V Reg. 19",
+      "role": "operational"
+    }
+  ],
+  "risk": {
+    "vessel": {
+      "mmsi": "412345678",
+      "imo": "8765432",
+      "name": "LU RONG YUAN YU 666",
+      "flag": "CHN",
+      "gear_type": "longliners",
+      "length_m": 56.0,
+      "authorizations": []
+    },
+    "region_id": "galapagos",
+    "risk_score": 0.92,
+    "classification": "confirmed_iuu",
+    "triggered_rules": [
+      "rule-loreg-75a",
+      "rule-iattc-c-19-01",
+      "rule-solas-v-19",
+      "rule-unclos-73"
+    ],
+    "evidence": [],
+    "reasoning": "Vessel transited 86 nm inside the Galápagos Marine Reserve over 7h45m with AIS disabled. SAR imagery (Sentinel-1A 06:14 UTC) confirms presence at 1°08′04″S, 90°51′33″W, within Zone 2.1 (no-take). Vessel is unregistered with IATTC and Ecuador's authorization registry. One prior documented AIS-disabling offense in Peruvian EEZ (2024-09-03) triggers recidivism multiplier."
+  },
+  "fine": {
+    "vessel_mmsi": "412345678",
+    "region_id": "galapagos",
+    "estimated_catch_kg": 4200.0,
+    "primary_species": "mahi-mahi / yellowfin tuna composite",
+    "line_items": [
+      {
+        "description": "Unauthorized fishing operations within a marine protected area, no-take Zone 2.1",
+        "legal_basis": [
+          {
+            "instrument": "LOREG Article 75",
+            "layer": "national",
+            "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+            "role": "penalty"
+          },
+          {
+            "instrument": "UNCLOS Article 73",
+            "layer": "international",
+            "full_title": "United Nations Convention on the Law of the Sea (1982)",
+            "role": "authority"
+          }
+        ],
+        "amount_usd": 80000.0,
+        "is_multiplier": false
+      },
+      {
+        "description": "Operation in IATTC convention area without registry authorization",
+        "legal_basis": [
+          {
+            "instrument": "IATTC Resolution C-19-01 §4",
+            "layer": "rfmo",
+            "full_title": "Inter-American Tropical Tuna Commission Resolution C-19-01",
+            "role": "operational"
+          }
+        ],
+        "amount_usd": 25000.0,
+        "is_multiplier": false
+      },
+      {
+        "description": "Disabling of AIS transmission for 7h 45min during transit of protected waters",
+        "legal_basis": [
+          {
+            "instrument": "SOLAS Chapter V Regulation 19",
+            "layer": "international",
+            "full_title": "International Convention for the Safety of Life at Sea, Chapter V Regulation 19",
+            "role": "operational"
+          },
+          {
+            "instrument": "EU IUU Regulation 1005/2008 Art. 3(1)(b)",
+            "layer": "international",
+            "full_title": "Council Regulation (EC) No 1005/2008",
+            "role": "operational"
+          }
+        ],
+        "amount_usd": 15000.0,
+        "is_multiplier": false
+      },
+      {
+        "description": "Estimated illegal catch confiscation equivalent (4,200 kg × USD 9.50/kg market rate, mahi-mahi / yellowfin tuna composite)",
+        "legal_basis": [
+          {
+            "instrument": "LOREG Article 75",
+            "layer": "national",
+            "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+            "role": "penalty"
+          },
+          {
+            "instrument": "FAO Compliance Agreement Article III",
+            "layer": "international",
+            "full_title": "Agreement to Promote Compliance with International Conservation and Management Measures by Fishing Vessels on the High Seas (FAO, 1993)",
+            "role": "authority"
+          }
+        ],
+        "amount_usd": 39900.0,
+        "is_multiplier": false
+      }
+    ],
+    "subtotal_usd": 159900.0,
+    "multipliers": {
+      "recidivism": 1.25,
+      "cooperation_credit": 1.0
+    },
+    "total_fine_usd": 199875.0,
+    "citations": [
+      {
+        "instrument": "UNCLOS Article 73",
+        "layer": "international",
+        "full_title": "United Nations Convention on the Law of the Sea (1982)",
+        "role": "authority"
+      },
+      {
+        "instrument": "LOREG Article 75",
+        "layer": "national",
+        "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+        "role": "penalty"
+      },
+      {
+        "instrument": "IATTC Resolution C-19-01 §4",
+        "layer": "rfmo",
+        "full_title": "Inter-American Tropical Tuna Commission Resolution C-19-01",
+        "role": "operational"
+      },
+      {
+        "instrument": "SOLAS Chapter V Regulation 19",
+        "layer": "international",
+        "full_title": "International Convention for the Safety of Life at Sea, Chapter V Reg. 19",
+        "role": "operational"
+      }
+    ],
+    "breakdown_text": "Base civil penalties total USD 159,900. Prior documented offense (Peru EEZ, 2024-09-03) triggers recidivism multiplier of 1.25, adding USD 39,975. Total civil penalty: USD 199,875.00."
+  },
+  "documents": [],
+  "cease_desist_audio_url": null,
+  "notified_port": null,
+  "call_recording_url": null,
+  "timeline": []
+}

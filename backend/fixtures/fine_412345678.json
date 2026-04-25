@@ -1,0 +1,117 @@
+{
+  "vessel_mmsi": "412345678",
+  "region_id": "galapagos",
+  "estimated_catch_kg": 4200.0,
+  "primary_species": "mahi-mahi / yellowfin tuna composite",
+  "line_items": [
+    {
+      "description": "Unauthorized fishing operations within a marine protected area, no-take Zone 2.1",
+      "legal_basis": [
+        {
+          "instrument": "LOREG Article 75",
+          "layer": "national",
+          "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+          "role": "penalty"
+        },
+        {
+          "instrument": "UNCLOS Article 73",
+          "layer": "international",
+          "full_title": "United Nations Convention on the Law of the Sea (1982)",
+          "role": "authority"
+        }
+      ],
+      "amount_usd": 80000.0,
+      "is_multiplier": false
+    },
+    {
+      "description": "Operation in IATTC convention area without registry authorization",
+      "legal_basis": [
+        {
+          "instrument": "IATTC Resolution C-19-01 §4",
+          "layer": "rfmo",
+          "full_title": "Inter-American Tropical Tuna Commission Resolution C-19-01 — Regional Vessel Register",
+          "role": "operational"
+        }
+      ],
+      "amount_usd": 25000.0,
+      "is_multiplier": false
+    },
+    {
+      "description": "Disabling of AIS transmission for 7h 45min during transit of protected waters",
+      "legal_basis": [
+        {
+          "instrument": "SOLAS Chapter V Regulation 19",
+          "layer": "international",
+          "full_title": "International Convention for the Safety of Life at Sea, Chapter V Regulation 19",
+          "role": "operational"
+        },
+        {
+          "instrument": "EU IUU Regulation 1005/2008 Art. 3(1)(b)",
+          "layer": "international",
+          "full_title": "Council Regulation (EC) No 1005/2008 establishing a Community system to prevent, deter and eliminate illegal, unreported and unregulated fishing",
+          "role": "operational"
+        }
+      ],
+      "amount_usd": 15000.0,
+      "is_multiplier": false
+    },
+    {
+      "description": "Estimated illegal catch confiscation equivalent (4,200 kg × USD 9.50/kg market rate, mahi-mahi / yellowfin tuna composite)",
+      "legal_basis": [
+        {
+          "instrument": "LOREG Article 75",
+          "layer": "national",
+          "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+          "role": "penalty"
+        },
+        {
+          "instrument": "FAO Compliance Agreement Article III",
+          "layer": "international",
+          "full_title": "Agreement to Promote Compliance with International Conservation and Management Measures by Fishing Vessels on the High Seas (FAO, 1993)",
+          "role": "authority"
+        }
+      ],
+      "amount_usd": 39900.0,
+      "is_multiplier": false
+    }
+  ],
+  "subtotal_usd": 159900.0,
+  "multipliers": {
+    "recidivism": 1.25,
+    "cooperation_credit": 1.0
+  },
+  "total_fine_usd": 199875.0,
+  "citations": [
+    {
+      "instrument": "UNCLOS Article 73",
+      "layer": "international",
+      "full_title": "United Nations Convention on the Law of the Sea (1982)",
+      "role": "authority"
+    },
+    {
+      "instrument": "PSMA Article 9(4)",
+      "layer": "international",
+      "full_title": "FAO Agreement on Port State Measures (2009)",
+      "role": "authority"
+    },
+    {
+      "instrument": "LOREG Article 75",
+      "layer": "national",
+      "full_title": "Organic Law of the Special Regime for the Province of Galápagos (Ecuador, 2015)",
+      "role": "penalty"
+    },
+    {
+      "instrument": "IATTC Resolution C-19-01 §4",
+      "layer": "rfmo",
+      "full_title": "Inter-American Tropical Tuna Commission Resolution C-19-01 — Regional Vessel Register",
+      "role": "operational"
+    },
+    {
+      "instrument": "SOLAS Chapter V Regulation 19",
+      "layer": "international",
+      "full_title": "International Convention for the Safety of Life at Sea, Chapter V Regulation 19",
+      "role": "operational"
+    }
+  ],
+  "breakdown_text": "Base civil penalties total USD 159,900 across MPA violation, IATTC non-registry, AIS disabling, and catch-confiscation equivalent. Prior documented offense (Peru EEZ, 2024-09-03) triggers a recidivism multiplier of 1.25 per LOREG Article 78, adding USD 39,975. No voluntary cooperation credit claimed. Total civil penalty assessed: USD 199,875.00."
+}
