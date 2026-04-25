@@ -689,7 +689,7 @@ def build_supervisor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         render_evidence_pdf,
     ]
     agent = create_tool_calling_agent(llm, tools, prompt)
-    return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)
+    return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=12)
 
 
 def _unwrap_output(out) -> str:

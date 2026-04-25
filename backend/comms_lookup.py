@@ -28,6 +28,10 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from dotenv import load_dotenv
+
+# Load backend/.env regardless of cwd (test_ai_call.py may be run from any dir).
+load_dotenv(Path(__file__).parent / ".env")
 
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # Adam — clear, authoritative
@@ -39,8 +43,8 @@ DEFAULT_OUTPUT_DIR = Path(__file__).parent / "audio_output"
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 EVIDENCE_OUTPUT_DIR = Path(__file__).parent / "output"
-DEFAULT_DEMO_CASE_ID = "IUU-PIPELINE-TEST-001"
-DEFAULT_DEMO_DOC = "combined_legal_package.pdf"
+DEFAULT_DEMO_CASE_ID = "SCB-2026-0425-001"
+DEFAULT_DEMO_DOC = "cease_and_desist_order.pdf"
 
 WARNING_TEMPLATE = "Warning. Ship {name} is at high risk of illegal fishing."
 

@@ -26,9 +26,11 @@ cloudinary>=1.39
 python-dotenv>=1.0
 
 # Existing AIS streaming integration (kept alongside new tools/)
-langchain>=0.3.0
-langchain-anthropic>=0.3.0
-langchain-core>=0.3.0
+# Pinned to 0.3.x — LangChain 1.0 moved AgentExecutor out of langchain.agents
+# and the agents in this repo are written for the 0.3 tool-calling-agent API.
+langchain>=0.3,<1.0
+langchain-anthropic>=0.3,<1.0
+langchain-core>=0.3,<1.0
 websockets>=12.0
 
 # Test
