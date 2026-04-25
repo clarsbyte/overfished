@@ -1,24 +1,46 @@
 import { api } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, PlayCircle, Phone } from "lucide-react";
-import { useRef, useState } from "react";
+import { Pencil, PlayCircle } from "lucide-react";
+import { Suspense, lazy, useRef, useState } from "react";
 import type { GlobeMethods } from "react-globe.gl";
 import { DocumentDownloadsPanel } from "./components/DocumentDownloadsPanel";
-import { DocumentPreviewModal } from "./components/DocumentPreviewModal";
-import { IntroSequence } from "./components/IntroSequence";
-import { type FisheryRegion, OverfishGlobe } from "./components/OverfishGlobe";
+import type { FisheryRegion, LayerOverrides } from "./components/OverfishGlobe";
+import { LayersPanel, type LayerState } from "./components/panels/LayersPanel";
+import { LiveAlertsPanel } from "./components/panels/LiveAlertsPanel";
+import { RiskHeatmapMini } from "./components/panels/RiskHeatmapMini";
+import { TodaysOverviewBar } from "./components/panels/TodaysOverviewBar";
+import { VesselDetailsPanel } from "./components/panels/VesselDetailsPanel";
 import { useDrawController } from "./components/useDrawController";
 import type { DocumentArtifact, Vessel } from "./types/schemas";
 
+const OverfishGlobe = lazy(() =>
+  import("./components/OverfishGlobe").then((m) => ({ default: m.OverfishGlobe })),
+);
+const IntroSequence = lazy(() =>
+  import("./components/IntroSequence").then((m) => ({ default: m.IntroSequence })),
+);
+const DocumentPreviewModal = lazy(() =>
+  import("./components/DocumentPreviewModal").then((m) => ({
+    default: m.DocumentPreviewModal,
+  })),
+);
+
 const DEMO_CASE_ID = "demo";
+
+const DEFAULT_LAYERS: LayerState = {
+  showVessels: true,
+  showHeatmap: true,
+  showPaths: true,
+  flightCount: 60,
+};
 
 export default function App() {
   const [introDone, setIntroDone] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocumentArtifact | null>(null);
-  const [_selectedVessel, setSelectedVessel] = useState<Vessel | null>(null);
+  const [selectedVessel, setSelectedVessel] = useState<Vessel | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<FisheryRegion | null>(null);
+  const [layers, setLayers] = useState<LayerState>(DEFAULT_LAYERS);
 
-  // Globe ref shared between draw hook and globe component.
   const globeRef = useRef<GlobeMethods>();
   const draw = useDrawController({
     globeRef,
@@ -38,6 +60,11 @@ export default function App() {
     queryFn: () => api.caseFine(DEMO_CASE_ID),
   });
 
+  const fisheryRegionsQ = useQuery({
+    queryKey: ["fisheryRegions"],
+    queryFn: () => api.fisheryRegions(),
+  });
+
   const renderDocsM = useMutation({
     mutationFn: () => api.renderDocumentFamily(DEMO_CASE_ID),
   });
@@ -52,8 +79,6 @@ export default function App() {
     queryClient.invalidateQueries({ queryKey: ["fine"] });
   };
 
-  // Build the port-call entry from the notify-port response. Renders as a
-  // surface-hugging dashed line + pulsing rings at the port destination.
   const portCalls = (() => {
     const r = notifyPortM.data;
     if (!r) return [];
@@ -67,19 +92,38 @@ export default function App() {
     ];
   })();
 
+  const layerOverrides: LayerOverrides = {
+    showVessels: layers.showVessels,
+    showHeatmap: layers.showHeatmap,
+    showPaths: layers.showPaths,
+    flightCount: layers.flightCount,
+  };
+
+  const handleAlertSelect = (regionId: string) => {
+    const region = (fisheryRegionsQ.data ?? []).find((r) => r.region_id === regionId);
+    if (region) setSelectedRegion(region);
+  };
+
   return (
     <>
-      {!introDone && <IntroSequence onComplete={() => setIntroDone(true)} />}
+      {!introDone && (
+        <Suspense fallback={null}>
+          <IntroSequence onComplete={() => setIntroDone(true)} />
+        </Suspense>
+      )}
 
       <div
         className={`${introDone ? "opacity-100" : "opacity-0"} transition-opacity duration-700 min-h-screen`}
       >
-        <OverfishGlobe
-          draw={draw}
-          onVesselSelected={setSelectedVessel}
-          onRegionSelected={setSelectedRegion}
-          portCalls={portCalls}
-        />
+        <Suspense fallback={null}>
+          <OverfishGlobe
+            draw={draw}
+            onVesselSelected={setSelectedVessel}
+            onRegionSelected={setSelectedRegion}
+            portCalls={portCalls}
+            layerOverrides={layerOverrides}
+          />
+        </Suspense>
 
         {/* Top-bar HUD */}
         <header className="fixed top-0 left-0 right-0 z-10 px-6 py-4 flex items-center justify-between pointer-events-none">
@@ -109,21 +153,12 @@ export default function App() {
               <PlayCircle className="w-3.5 h-3.5" />
               {renderDocsM.isPending ? "RENDERING…" : "RUN DEMO FLOW"}
             </button>
-
-            <button
-              onClick={() => notifyPortM.mutate()}
-              disabled={notifyPortM.isPending}
-              className="px-3 py-2 bg-ink-900/80 backdrop-blur border border-amber-500/30 rounded text-xs font-mono tracking-[0.15em] text-amber-300 hover:bg-amber-500/10 hover:border-amber-500/60 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              <Phone className="w-3.5 h-3.5" />
-              NOTIFY PORT
-            </button>
           </div>
         </header>
 
         {/* Drawing instructions */}
         {draw.mode === "drawing" && (
-          <div className="fixed top-20 right-6 z-10 bg-ink-900/90 backdrop-blur border border-cyan-500/30 rounded p-4 max-w-xs">
+          <div className="fixed top-20 left-6 z-10 bg-ink-900/90 backdrop-blur border border-cyan-500/30 rounded p-4 max-w-xs pointer-events-auto">
             <div className="text-[10px] font-mono tracking-[0.2em] text-cyan-400/60 uppercase mb-2">
               Region drawing
             </div>
@@ -138,7 +173,31 @@ export default function App() {
           </div>
         )}
 
-        {/* Document panel — bottom-right */}
+        {/* Right column: alerts + layers + (conditional) vessel details */}
+        <div className="fixed top-20 right-6 z-10 flex flex-col gap-3 pointer-events-none">
+          <LiveAlertsPanel onRegionSelect={handleAlertSelect} />
+          <LayersPanel value={layers} onChange={setLayers} />
+          <VesselDetailsPanel
+            vessel={selectedVessel}
+            onClose={() => setSelectedVessel(null)}
+            onRunDemo={onRunDemo}
+            onNotifyPort={() => notifyPortM.mutate()}
+            runDemoPending={renderDocsM.isPending}
+            notifyPortPending={notifyPortM.isPending}
+          />
+        </div>
+
+        {/* Bottom-center metric tiles */}
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+          <TodaysOverviewBar />
+        </div>
+
+        {/* Bottom-left mini heatmap */}
+        <div className="fixed bottom-6 left-6 z-10 pointer-events-none">
+          <RiskHeatmapMini />
+        </div>
+
+        {/* Bottom-right document panel (shown after demo flow) */}
         <div className="fixed bottom-6 right-6 z-10 w-[640px] max-w-[calc(100vw-3rem)]">
           <DocumentDownloadsPanel
             documents={renderDocsM.data ?? []}
@@ -148,7 +207,9 @@ export default function App() {
           />
         </div>
 
-        <DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+        <Suspense fallback={null}>
+          <DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+        </Suspense>
       </div>
     </>
   );
