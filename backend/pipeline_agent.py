@@ -586,34 +586,34 @@ SYSTEM_PROMPT = """You are a vessel-incursion analyst. Trigger: a "supposed vess
 event has been reported. Your job is to assemble an evidence document by composing three
 specialist subagents and synthesizing their findings.
 
-PIPELINE — follow this order strictly:
+PIPELINE — turn 1 has already been prefetched IN PARALLEL by the runtime
+and is provided inline in the human message under
+"TURN-1 DATA (already gathered)". Do NOT re-call check_ais_at_location,
+find_dark_targets_in_region, or lookup_regional_laws — their results are
+above. (They are still registered as tools only as a fallback; assume the
+prefetched data is authoritative.)
 
-Turn 1 (call ALL THREE tools in the same response — they are independent):
-  - check_ais_at_location(latitude, longitude, radius_miles)
-  - find_dark_targets_in_region(latitude, longitude, radius_miles)
-  - lookup_regional_laws(latitude, longitude, port_country_code=...)
-
-Compute the dark-target gap from turn 1's results:
+Compute the dark-target gap from the prefetched turn-1 data:
   - dark_target_count = max(0, SAR_DETECTIONS_count - AIS_STATUS_count)
   - dark_target_count > 0 means satellite radar saw vessels that AIS did not —
     a strong dark-fishing signal that MUST be surfaced in the evidence document.
 
-Turn 2 — branch on AIS results:
-  CASE A: check_ais_at_location returned MMSIs.
-    Pick the top 6 closest (the AIS output is already distance-ordered).
-    Call classify_vessels_iuu_batch(mmsis=[<m1>, <m2>, ..., <m6>]) ONCE with
-    the top 6 MMSIs as a list. The tool fans them out to threads internally,
-    so latency ~= slowest single classification, not 6x. Do NOT emit multiple
-    classify_vessel_iuu tool calls — the batch tool replaces that pattern.
+Turn 1 (your first action) — branch on the prefetched AIS result:
+  CASE A: check_ais_at_location output lists MMSIs.
+    Pick the top 6 closest (already distance-ordered). Call
+    classify_vessels_iuu_batch(mmsis=[<m1>, ..., <m6>]) ONCE with the list.
+    The tool fans them out to threads internally — latency ~= slowest
+    single classification, not 6x. Do NOT emit multiple classify_vessel_iuu
+    tool calls — the batch tool replaces that pattern.
 
   CASE B: AIS_STATUS: silent (zero vessels broadcasting).
     This is itself a red flag. Call find_historical_vessels_in_region(...).
     Then call classify_vessels_iuu_batch(mmsis=[<...>]) ONCE with the top 6
     MMSIs returned. Same threading semantics as CASE A.
 
-Turn 3 — synthesize the evidence document.
+Turn 2 — synthesize the evidence document.
 
-Turn 4 — CONDITIONAL: render a combined legal PDF only if the case is prosecutable.
+Turn 3 — CONDITIONAL: render a combined legal PDF only if the case is prosecutable.
   Decision rule (the GATE):
     Render if ANY of:
       (a) at least one classify_vessels_iuu_batch verdict is HIGH or MEDIUM, OR
@@ -709,6 +709,50 @@ def _unwrap_output(out) -> str:
     return str(out)
 
 
+def _prefetch_turn1(
+    latitude: float,
+    longitude: float,
+    radius_miles: float,
+    port_country_code: str | None,
+) -> dict[str, str]:
+    """Run the three independent turn-1 fetches concurrently.
+
+    LangChain's AgentExecutor runs tool calls serially even when the model
+    emits them in a single parallel response, so the supervisor would pay
+    ~30s (AIS) + ~5s (SAR) + ~30s (legal LLM) sequentially. AIS, SAR, and
+    legal-dossier hit completely independent backends — fan them out to a
+    ThreadPoolExecutor so wall time is max() instead of sum().
+    """
+    def _safe(fut, label: str) -> str:
+        try:
+            return fut.result()
+        except Exception as exc:
+            return f"({label} prefetch failed: {exc!s})"
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        ais_fut = pool.submit(
+            check_ais_at_location.invoke,
+            {"latitude": latitude, "longitude": longitude, "radius_miles": radius_miles},
+        )
+        sar_fut = pool.submit(
+            find_dark_targets_in_region.invoke,
+            {"latitude": latitude, "longitude": longitude, "radius_miles": radius_miles},
+        )
+        law_fut = pool.submit(
+            lookup_regional_laws.invoke,
+            {
+                "latitude": latitude,
+                "longitude": longitude,
+                "port_country_code": port_country_code,
+            },
+        )
+        return {
+            "ais": _safe(ais_fut, "check_ais_at_location"),
+            "sar": _safe(sar_fut, "find_dark_targets_in_region"),
+            "law": _safe(law_fut, "lookup_regional_laws"),
+        }
+
+
 def evaluate_incident(
     latitude: float,
     longitude: float,
@@ -716,21 +760,32 @@ def evaluate_incident(
     port_country_code: str | None = None,
     mmsi: str | None = None,
 ) -> str:
-    executor = build_supervisor()
+    prefetch = _prefetch_turn1(latitude, longitude, radius_miles, port_country_code)
+
     extras = []
     if port_country_code:
         extras.append(f"port_country_code = {port_country_code!r}")
     if mmsi:
         extras.append(
             f"a specific vessel of interest with MMSI={mmsi} was identified by the trigger; "
-            "you may classify it directly via classify_vessel_iuu in addition to the AIS-discovered set"
+            "include it in the classify_vessels_iuu_batch list alongside the AIS-discovered set"
         )
     extras_str = (" Context: " + "; ".join(extras) + ".") if extras else ""
+
     question = (
         f"A supposed vessel has been reported entering the region around "
-        f"latitude {latitude}, longitude {longitude} (search radius {radius_miles} miles). "
-        f"Run the pipeline and return the formatted evidence document.{extras_str}"
+        f"latitude {latitude}, longitude {longitude} (search radius {radius_miles} miles)."
+        f"{extras_str}\n\n"
+        "TURN-1 DATA (already gathered — prefetched in parallel; do NOT re-call):\n\n"
+        f"--- check_ais_at_location ---\n{prefetch['ais']}\n\n"
+        f"--- find_dark_targets_in_region ---\n{prefetch['sar']}\n\n"
+        f"--- lookup_regional_laws ---\n{prefetch['law']}\n\n"
+        "Now: classify_vessels_iuu_batch on the top 6 MMSIs (or call "
+        "find_historical_vessels_in_region first if AIS is silent), "
+        "synthesize the evidence document, and call render_evidence_pdf "
+        "if the gate criteria are met."
     )
+    executor = build_supervisor()
     result = executor.invoke({"input": question})
     raw = result["output"] if isinstance(result, dict) else result
     return _unwrap_output(raw)
