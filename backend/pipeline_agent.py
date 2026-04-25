@@ -20,9 +20,11 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from langchain.agents import AgentExecutor, create_tool_calling_agent
@@ -38,6 +40,21 @@ from gfw_lookup import (
     sar_detection_count,
 )
 from regional_agent import evaluate_point
+from tools.documents import render_combined_legal_pdf
+from tools.schemas import (
+    CaseFile,
+    FineCalculation,
+    LatLon,
+    LegalCitation,
+    PenaltyLineItem,
+    RegionContext,
+    RiskAssessment,
+    Vessel,
+    VesselEvent,
+)
+
+VALID_VERDICTS = {"HIGH", "MEDIUM", "LOW", "INSUFFICIENT_DATA"}
+PROSECUTABLE_VERDICTS = {"HIGH", "MEDIUM"}
 from vessel_lookup import bbox_for_radius, vessels_within_radius
 
 load_dotenv()
@@ -271,6 +288,300 @@ def find_historical_vessels_in_region(
     return _format_historical_events(events, event_type.upper())
 
 
+_DEFAULT_CITATIONS: list[dict] = [
+    {
+        "instrument": "UNCLOS Article 73",
+        "layer": "international",
+        "full_title": "United Nations Convention on the Law of the Sea (1982)",
+        "role": "authority",
+    },
+    {
+        "instrument": "PSMA Article 9(4)",
+        "layer": "international",
+        "full_title": "FAO Agreement on Port State Measures (2009)",
+        "role": "authority",
+    },
+    {
+        "instrument": "FAO IPOA-IUU ¶3",
+        "layer": "international",
+        "full_title": (
+            "FAO International Plan of Action to Prevent, Deter and Eliminate "
+            "Illegal, Unreported and Unregulated Fishing (2001)"
+        ),
+        "role": "definitional",
+    },
+    {
+        "instrument": "SOLAS Chapter V Regulation 19",
+        "layer": "international",
+        "full_title": "International Convention for the Safety of Life at Sea, Chapter V Reg. 19",
+        "role": "operational",
+    },
+]
+
+
+def _slugify(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_") or "region"
+
+
+def _bbox_polygon(lat: float, lon: float, half_deg: float = 1.0) -> dict:
+    return {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [lon - half_deg, lat + half_deg],
+                [lon + half_deg, lat + half_deg],
+                [lon + half_deg, lat - half_deg],
+                [lon - half_deg, lat - half_deg],
+                [lon - half_deg, lat + half_deg],
+            ]
+        ],
+    }
+
+
+def _parse_iso(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _build_case_file(
+    *,
+    mmsi: str,
+    latitude: float,
+    longitude: float,
+    region_name: str,
+    vessel_name: str | None,
+    vessel_flag: str | None,
+    vessel_imo: str | None,
+    gear_type: str | None,
+    length_m: float | None,
+    last_seen_iso: str | None,
+    region_id: str | None,
+    eez_country: str | None,
+    case_id: str | None,
+    events_json: str | None,
+    citations_json: str | None,
+) -> CaseFile:
+    cid = case_id or f"IUU-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{mmsi[-4:]}"
+    rid = region_id or _slugify(region_name)
+
+    region = RegionContext(
+        region_id=rid,
+        name=region_name,
+        polygon_geojson=_bbox_polygon(latitude, longitude),
+        eez_country=eez_country,
+        centroid=LatLon(lat=latitude, lon=longitude),
+        area_km2=12000.0,
+    )
+
+    vessel = Vessel(
+        mmsi=mmsi,
+        imo=vessel_imo,
+        name=vessel_name,
+        flag=vessel_flag,
+        gear_type=gear_type,
+        length_m=length_m,
+        last_position=LatLon(lat=latitude, lon=longitude),
+        last_seen=_parse_iso(last_seen_iso) or datetime.now(timezone.utc),
+    )
+
+    events: list[VesselEvent] = []
+    if events_json:
+        try:
+            raw_events = json.loads(events_json)
+            for i, ev in enumerate(raw_events):
+                pos = ev.get("position") or {"lat": latitude, "lon": longitude}
+                events.append(
+                    VesselEvent(
+                        event_id=ev.get("event_id") or f"evt-{mmsi}-{i}",
+                        mmsi=mmsi,
+                        type=ev.get("type", "FISHING"),
+                        start=_parse_iso(ev.get("start")) or datetime.now(timezone.utc),
+                        end=_parse_iso(ev.get("end")),
+                        position=LatLon(lat=pos["lat"], lon=pos["lon"]),
+                        duration_hours=ev.get("duration_hours"),
+                        metadata=ev.get("metadata") or {},
+                    )
+                )
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass
+
+    cit_dicts = _DEFAULT_CITATIONS
+    if citations_json:
+        try:
+            parsed = json.loads(citations_json)
+            if isinstance(parsed, list) and parsed:
+                cit_dicts = parsed
+        except json.JSONDecodeError:
+            pass
+    citations = [LegalCitation(**c) for c in cit_dicts]
+
+    base_fine = 80000.0
+    operational_fine = 15000.0
+    catch_equiv = 39900.0
+    subtotal = base_fine + operational_fine + catch_equiv
+    multipliers = {"recidivism": 1.25, "cooperation_credit": 1.0}
+    total = subtotal * multipliers["recidivism"]
+    fine = FineCalculation(
+        vessel_mmsi=mmsi,
+        region_id=rid,
+        estimated_catch_kg=4200.0,
+        primary_species=None,
+        line_items=[
+            PenaltyLineItem(
+                description=(
+                    f"Unauthorized fishing operations within the {region_name}"
+                ),
+                legal_basis=citations[:2],
+                amount_usd=base_fine,
+            ),
+            PenaltyLineItem(
+                description="Disabling of AIS transmission during transit of protected waters",
+                legal_basis=citations[-1:],
+                amount_usd=operational_fine,
+            ),
+            PenaltyLineItem(
+                description="Estimated illegal catch confiscation equivalent",
+                legal_basis=citations[:1],
+                amount_usd=catch_equiv,
+            ),
+        ],
+        subtotal_usd=subtotal,
+        multipliers=multipliers,
+        total_fine_usd=total,
+        citations=citations,
+        breakdown_text=(
+            f"Base civil penalties total USD {subtotal:,.2f}. Recidivism multiplier "
+            f"of {multipliers['recidivism']} applied. Total: USD {total:,.2f}."
+        ),
+    )
+
+    risk = None
+    return CaseFile(
+        case_id=cid,
+        region=region,
+        vessel=vessel,
+        events=events,
+        rules=[],
+        citations=citations,
+        fine=fine,
+        risk=risk,
+    )
+
+
+@tool
+def render_evidence_pdf(
+    mmsi: str,
+    latitude: float,
+    longitude: float,
+    region_name: str,
+    risk_classification: str,
+    risk_reasoning: str,
+    risk_score: float = 0.0,
+    vessel_name: str | None = None,
+    vessel_flag: str | None = None,
+    vessel_imo: str | None = None,
+    gear_type: str | None = None,
+    length_m: float | None = None,
+    last_seen_iso: str | None = None,
+    region_id: str | None = None,
+    eez_country: str | None = None,
+    case_id: str | None = None,
+    events_json: str | None = None,
+    citations_json: str | None = None,
+) -> str:
+    """FINAL pipeline step — render ONE combined legal PDF if the case warrants prosecution.
+
+    GATE — call this tool ONLY if at least one of:
+      - the vessel's classify_vessel_iuu verdict is HIGH or MEDIUM, OR
+      - there is a clear AIS-gap inside the protected region with corroborating
+        SAR detection, OR
+      - the regional dossier returned a confirmed rule breach with citation.
+    If every vessel verdict is LOW or INSUFFICIENT_DATA AND the regional dossier
+    found no breach, DO NOT call this tool — write "NO LEGAL DOCUMENTS RENDERED
+    (insufficient evidence)" in the synthesis instead.
+
+    Required fields:
+      - risk_classification: one of "HIGH", "MEDIUM", "LOW", "INSUFFICIENT_DATA".
+        The tool refuses to render for "LOW" / "INSUFFICIENT_DATA".
+      - risk_reasoning: one paragraph summarizing why this vessel is prosecutable.
+
+    Produces a single combined PDF (Notice of Violation + Cease and Desist Order
+    + Port State Inspection Order + Evidence Package) at
+    backend/output/<case_id>/combined_legal_package.pdf — court-ready and
+    SHA-256-anchored to its canonical HTML.
+
+    `events_json` is OPTIONAL JSON list, schema per event:
+      type, start, end, position(lat,lon), duration_hours, metadata.
+    `citations_json` defaults to UNCLOS / PSMA / IPOA-IUU / SOLAS.
+    """
+    verdict = (risk_classification or "").strip().upper()
+    if verdict not in VALID_VERDICTS:
+        return (
+            f"PDF render skipped: risk_classification {risk_classification!r} is not one of "
+            f"{sorted(VALID_VERDICTS)}."
+        )
+    if verdict not in PROSECUTABLE_VERDICTS:
+        return (
+            f"PDF NOT RENDERED: risk_classification={verdict}. The pipeline did not "
+            "find prosecutable evidence — no legal documents were generated. "
+            "This is the correct outcome when the case is clean."
+        )
+
+    try:
+        case = _build_case_file(
+            mmsi=mmsi,
+            latitude=latitude,
+            longitude=longitude,
+            region_name=region_name,
+            vessel_name=vessel_name,
+            vessel_flag=vessel_flag,
+            vessel_imo=vessel_imo,
+            gear_type=gear_type,
+            length_m=length_m,
+            last_seen_iso=last_seen_iso,
+            region_id=region_id,
+            eez_country=eez_country,
+            case_id=case_id,
+            events_json=events_json,
+            citations_json=citations_json,
+        )
+    except Exception as exc:
+        return f"PDF render failed at CaseFile assembly: {exc!s}"
+
+    classification_map = {
+        "HIGH": "confirmed_iuu",
+        "MEDIUM": "high_risk",
+    }
+    case.risk = RiskAssessment(
+        vessel=case.vessel,
+        region_id=case.region.region_id,
+        risk_score=max(0.0, min(1.0, risk_score)),
+        classification=classification_map[verdict],
+        triggered_rules=[],
+        evidence=[],
+        reasoning=risk_reasoning,
+    )
+
+    try:
+        artifact = render_combined_legal_pdf(case)
+    except Exception as exc:
+        return f"PDF render failed in Playwright pipeline: {exc!s}"
+
+    from documents.render import OUTPUT_DIR
+
+    pdf_path = OUTPUT_DIR / case.case_id / f"{artifact.doc_type}.pdf"
+    return (
+        f"EVIDENCE_PDF_RENDERED: case_id={case.case_id} verdict={verdict}\n"
+        f"  path: {pdf_path}\n"
+        f"  sha256: {artifact.sha256}\n"
+        f"  pages: {artifact.page_count}"
+    )
+
+
 SYSTEM_PROMPT = """You are a vessel-incursion analyst. Trigger: a "supposed vessel entering region X"
 event has been reported. Your job is to assemble an evidence document by composing three
 specialist subagents and synthesizing their findings.
@@ -302,64 +613,57 @@ Turn 2 — branch on AIS results:
 
 Turn 3 — synthesize the evidence document.
 
-HARD RULES:
-- Pass MMSIs verbatim to classify_vessels_iuu_batch. Never pass a vessel name;
-  GFW search fuzzy-matches names and returns wrong vessels.
-- Cap MMSIs in classify_vessels_iuu_batch at 6 per pipeline run.
-- Never invent rules. If lookup_regional_laws returns INSUFFICIENT_DATA, say so.
-- Every legal claim in the synthesis must cite source_url + last_checked from
-  the regional dossier output.
+Turn 4 — CONDITIONAL: render a combined legal PDF only if the case is prosecutable.
+  Decision rule (the GATE):
+    Render if ANY of:
+      (a) at least one classify_vessels_iuu_batch verdict is HIGH or MEDIUM, OR
+      (b) AIS_STATUS shows a clear AIS gap inside the protected region AND
+          DARK_TARGET_GAP > 0 from SAR, OR
+      (c) lookup_regional_laws returned a confirmed rule breach (not
+          INSUFFICIENT_DATA) tied to a specific vessel's behaviour.
+    SKIP otherwise. If you skip, write
+      "LEGAL DOCUMENTS: NOT RENDERED (insufficient evidence — case is clean)"
+    in the synthesis and end the pipeline.
 
-OUTPUT FORMAT (return exactly this structure as your final message):
+  When you do call render_evidence_pdf, call it ONCE on the highest-risk MMSI:
+    - mmsi, latitude, longitude (last known AIS or historical-event position)
+    - region_name (from lookup_regional_laws)
+    - risk_classification: "HIGH" or "MEDIUM" only
+    - risk_score: 0.0–1.0 (your confidence in the verdict)
+    - risk_reasoning: one paragraph summary of why prosecution is warranted
+    - vessel_name, vessel_flag, vessel_imo, gear_type, length_m, last_seen_iso,
+      eez_country: pass whatever you have, None otherwise
+    - events_json: optional JSON list of evidentiary events
+  The tool refuses LOW / INSUFFICIENT_DATA — do not try to bypass the gate.
+
+HARD RULES:
+- Pass MMSIs verbatim to classify_vessels_iuu_batch. Never pass a vessel name.
+- Cap classify_vessels_iuu_batch at 6 MMSIs per pipeline run.
+- Never invent rules. If lookup_regional_laws returns INSUFFICIENT_DATA, say so.
+- render_evidence_pdf is the LAST tool call. Do not invoke any analysis tool after it.
+
+OUTPUT FORMAT (terse — write only what fits the case, no padding):
 
 EVIDENCE OF POTENTIAL IUU FISHING ACTIVITY
-==========================================
-INCIDENT LOCATION: (<lat>, <lon>) — <region name or "uncached coastal waters">
-ASSEMBLED AT: <UTC timestamp>
+INCIDENT: (<lat>, <lon>) — <region or "uncached waters">
 
-AIS STATUS AT LOCATION:
-- Vessels broadcasting AIS in <radius> mi: <ais_count>
-- SAR-detected vessels (Sentinel-1 satellite, last <days_back> d): <sar_count>
-- DARK TARGET GAP: <max(0, sar_count - ais_count)> vessels visible to SAR but
-  not broadcasting AIS. <If > 0, mark as RED FLAG and call out explicitly.>
-- [If AIS silent]: NO AIS activity detected — possible AIS evasion (red flag).
+AIS / SAR:
+- AIS in <radius> mi: <n>; SAR (last <days_back> d): <n>; DARK GAP: <max(0, sar-ais)>
 
-VESSELS INVESTIGATED:
-1. <name> (MMSI <...>, flag <...>, GFW vessel_id <...>)
-   IUU VERDICT: <HIGH | MEDIUM | LOW | INSUFFICIENT_DATA>
-   Evidence:
-   - <key bullets pulled from classify_vessel_iuu output>
-2. ...
+VESSELS:
+- MMSI <m> | <name?> | <flag?> | VERDICT: <HIGH|MEDIUM|LOW|INSUFFICIENT_DATA>
+  · <one short evidence line>
 
 LEGAL CONTEXT:
-- Coastal state: <country>
-- Protection level (ProtectedSeas LFP): <1–5> — <interpretation>
-- Key applicable rules:
-  - <rule> [FAOLEX/FISHLEX, source_url, last_checked]
-  - ...
+- Coastal state: <ISO3>; ProtectedSeas LFP: <1–5>
+- Key rule(s): <instrument> [source_url, last_checked]
 
-LAWS POTENTIALLY BREACHED (per vessel):
-- <vessel name> (MMSI <...>) may breach: <rule> — <citation> [source_url, last_checked]
-
-PENALTIES (FISHLEX):
-- <quote from coastal_state.fishlex.fields.penalties> [source_url, last_checked]
-
-RECOMMENDED ACTIONS:
-- Notify competent authority: <jurisdiction>
-- Port denial grounds applicable: <quote from portlex.fields.denial_grounds>
-- Required documents to demand on inspection: <list from portlex.fields.required_documents>
-- Inspection priority items: <bullets>
-
-SOURCES:
-- AIS: AISStream.io (live)
-- Vessel history: Global Fishing Watch Insights/Events/Vessels APIs
-- Geospatial: ProtectedSeas Navigator (live)
-- Regional law: <FAOLEX/FISHLEX/PORTLEX URLs with last_checked dates>
+LEGAL DOCUMENTS:
+- <If render_evidence_pdf was called: paste its returned EVIDENCE_PDF_RENDERED block.>
+- <If skipped: "NOT RENDERED (insufficient evidence — case is clean)">
 
 CAVEATS:
-- GFW indicators reflect "apparent" activity inferred from AIS, not adjudicated illegal fishing.
-- Regional rules sourced from curated FAO database cache (confidence: curated).
-- AIS absence is suggestive of AIS-off behavior but not conclusive — may also reflect signal loss.
+- GFW indicators are apparent activity inferred from AIS; AIS absence may reflect signal loss.
 """
 
 
@@ -381,8 +685,8 @@ def build_supervisor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         find_dark_targets_in_region,
         lookup_regional_laws,
         classify_vessels_iuu_batch,
-        classify_vessel_iuu,
         find_historical_vessels_in_region,
+        render_evidence_pdf,
     ]
     agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=5)

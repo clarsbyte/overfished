@@ -37,3 +37,7 @@ pytest-asyncio>=0.23
 
 # Twilio (phone call warnings)
 twilio>=9.0.0
+
+# AI conversational call (Claude Haiku reading evidence PDFs)
+anthropic>=0.40
+pypdf>=4.0  # PyPDF2 also works as a fallback

@@ -40,6 +40,7 @@ DocType = Literal[
     "cease_and_desist_order",
     "port_inspection_order",
     "evidence_package",
+    "combined_legal_package",
 ]
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -66,6 +67,10 @@ _DOC_META: dict[str, dict] = {
     "evidence_package": {
         "template": "evidence_package.html",
         "title": "Evidence Package",
+    },
+    "combined_legal_package": {
+        "template": "combined_legal_package.html",
+        "title": "Combined Legal Package",
     },
 }
 
@@ -306,8 +311,10 @@ async def render_one_document(case: CaseFile, doc_type: DocType, browser: Browse
         html_path = case_dir / f"{doc_type}.html"
         # Save canonical HTML (the authoritative pre-hash version) for verification:
         canonical_path = case_dir / f"{doc_type}.canonical.html"
-        canonical_path.write_text(canonical_html)
-        html_path.write_text(final_html)
+        # write_bytes (not write_text) so Windows does not translate \n -> \r\n,
+        # which would invalidate the SHA-256 anchor computed from canonical_html.
+        canonical_path.write_bytes(canonical_html.encode("utf-8"))
+        html_path.write_bytes(final_html.encode("utf-8"))
         pdf_path.write_bytes(final_pdf)
     finally:
         if own_browser:

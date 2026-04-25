@@ -20,7 +20,7 @@ T = TypeVar("T", bound=BaseModel)
 def load_raw(name: str) -> dict | list:
     """Read a fixture JSON file by name (without extension) and return the raw value."""
     path = FIXTURES_DIR / f"{name}.json"
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         return json.load(f)
 
 
