@@ -1,0 +1,215 @@
+{% extends '_base.html' %}
+
+{% block stripe_text %}Combined Legal Package — Case File {{ case.case_id }}{% endblock %}
+
+{% block subject %}
+  Combined Legal Package — Notice of Violation, Cease and Desist Order,
+  Port State Inspection Order, and Evidence Package — Case {{ case.case_id }}
+{% endblock %}
+
+{% block reference_legal_basis %}
+  <tr><td>Legal Basis</td><td>UNCLOS Art. 73 · PSMA Art. 9</td></tr>
+  <tr><td></td><td>LOREG Art. 75 · SOLAS Ch. V Reg. 19</td></tr>
+{% endblock %}
+
+{% block body %}
+
+  {# ─── Part 1: Notice of Violation ─────────────────────────────────── #}
+  <section class="part-marker">
+    <h1 style="font-size: 14pt; margin: 0 0 6pt 0;">Part I — Notice of Violation</h1>
+    <p style="margin: 0; color: #555; font-size: 10pt;">Civil Penalty Assessment under LOREG Article 75</p>
+  </section>
+
+  <section>
+    <h2><span class="roman">I.</span> Findings of Fact</h2>
+    <ol class="legal-list">
+      {% for finding in findings %}
+        <li><span class="lead">Whereas,</span> {{ finding | safe }}</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">II.</span> Determination and Order</h2>
+    <p style="margin-top: 0;">
+      Based upon the foregoing Findings of Fact, the undersigned hereby
+      <strong>DETERMINES AND ORDERS</strong> as follows:
+    </p>
+    <ol class="legal-list">
+      <li><span class="lead">Now therefore,</span> the Master and Owner of <strong>FV {{ case.vessel.name | default(case.vessel.mmsi) }}</strong> are hereby <strong>NOTIFIED</strong> of violations of the following instruments:
+        <ol class="sublist">
+          {% for cite in violations_cited %}
+            <li><span class="cite">{{ cite.instrument }}</span> — {{ cite.role_text }};</li>
+          {% endfor %}
+        </ol>
+      </li>
+      <li><span class="lead">Now therefore,</span> a <strong>CIVIL PENALTY in the amount of USD ${{ '{:,.2f}'.format(case.fine.total_fine_usd) }}</strong> is hereby <strong>ASSESSED</strong> against the Owner, with the breakdown set forth in <strong>Schedule A</strong> below;</li>
+      <li><span class="lead">Now therefore,</span> the subject vessel is <strong>ORDERED</strong> to (a) cease all fishing operations, (b) re-enable AIS transmission, and (c) exit the {{ case.region.name }} via the most direct course;</li>
+      <li><span class="lead">Now therefore,</span> the Owner shall respond in writing within <strong>thirty (30) days</strong>. Failure to respond shall result in referral to the Public Prosecutor and inclusion on the IATTC IUU Vessel List.</li>
+    </ol>
+  </section>
+
+  <div class="schedule-header">
+    <span class="schedule-label">Schedule A</span>
+    <span class="schedule-title">Civil Penalty Assessment</span>
+  </div>
+
+  <table class="penalty-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Description of Offense</th>
+        <th class="legal-col">Legal Basis</th>
+        <th class="amount-col">Amount (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in case.fine.line_items %}
+        <tr>
+          <td>{{ '{:02d}'.format(loop.index) }}</td>
+          <td>{{ item.description }}</td>
+          <td class="legal-cite">{% for c in item.legal_basis %}{{ c.instrument }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+          <td class="amount">${{ '{:,.2f}'.format(item.amount_usd) }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="subtotal">
+        <td colspan="3">Subtotal — base penalty</td>
+        <td class="amount">${{ '{:,.2f}'.format(case.fine.subtotal_usd) }}</td>
+      </tr>
+      {% if case.fine.multipliers.recidivism and case.fine.multipliers.recidivism != 1.0 %}
+        {% set recid_amt = case.fine.subtotal_usd * (case.fine.multipliers.recidivism - 1) %}
+        <tr class="subtotal">
+          <td colspan="3">Recidivism multiplier &nbsp;×&nbsp; {{ case.fine.multipliers.recidivism }}</td>
+          <td class="amount">+ ${{ '{:,.2f}'.format(recid_amt) }}</td>
+        </tr>
+      {% endif %}
+      <tr class="total">
+        <td colspan="3">Total Civil Penalty</td>
+        <td class="amount">${{ '{:,.2f}'.format(case.fine.total_fine_usd) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  {# ─── Part 2: Cease and Desist ─────────────────────────────────────── #}
+  <section class="part-marker" style="page-break-before: always;">
+    <h1 style="font-size: 14pt; margin: 0 0 6pt 0;">Part II — Cease and Desist Order</h1>
+    <p style="margin: 0; color: #555; font-size: 10pt;">Immediate Compliance Required — UNCLOS Art. 73 · PSMA Art. 9</p>
+  </section>
+
+  <section>
+    <h2><span class="roman">III.</span> Order to Cease and Desist</h2>
+    <p style="margin-top: 0;">
+      Acting under authority of the coastal state, the undersigned hereby
+      <strong>ORDERS</strong> the Master and Owner of <strong>FV {{ case.vessel.name | default(case.vessel.mmsi) }}</strong>
+      (MMSI <span class="mono">{{ case.vessel.mmsi }}</span>) to:
+    </p>
+    <ol class="legal-list">
+      <li><span class="lead">Now therefore,</span> <strong>CEASE</strong> all fishing operations immediately, including the deployment, retrieval, or storage of any fishing gear;</li>
+      <li><span class="lead">Now therefore,</span> <strong>RE-ENABLE</strong> continuous AIS transmission per <span class="cite">SOLAS Chapter V, Regulation 19</span> and maintain transmission until clearance is granted;</li>
+      <li><span class="lead">Now therefore,</span> <strong>EXIT</strong> the {{ case.region.name }} via the most direct navigable course, with the route to be verified by satellite tracking;</li>
+      <li><span class="lead">Now therefore,</span> <strong>ACKNOWLEDGE</strong> receipt of this Order via VHF Channel 16 within <strong>twenty-four (24) hours</strong> of transmission.</li>
+    </ol>
+  </section>
+
+  {# ─── Part 3: Port State Inspection Order ─────────────────────────── #}
+  <section class="part-marker" style="page-break-before: always;">
+    <h1 style="font-size: 14pt; margin: 0 0 6pt 0;">Part III — Port State Inspection Order</h1>
+    <p style="margin: 0; color: #555; font-size: 10pt;">FAO Port State Measures Agreement, Article 9</p>
+  </section>
+
+  <section>
+    <h2><span class="roman">IV.</span> Request for Inspection-on-Arrival</h2>
+    <p style="margin-top: 0;">
+      Pursuant to <span class="cite">PSMA Article 9(4)</span>, the coastal state formally <strong>REQUESTS</strong> that the destination port authority{% if port.name %} ({{ port.name }}{% if port.un_locode %}, UN/LOCODE <span class="mono">{{ port.un_locode }}</span>{% endif %}){% endif %} undertake the following:
+    </p>
+    <ol class="legal-list">
+      <li><span class="lead">Item 1:</span> <strong>DENY PORT ENTRY</strong> to the subject vessel pending compliance investigation per PSMA Article 9(4);</li>
+      <li><span class="lead">Item 2:</span> If port entry is granted on humanitarian or safety grounds, conduct a <strong>FULL INSPECTION</strong> of logbook, fishing gear, catch, and AIS records per PSMA Article 11;</li>
+      <li><span class="lead">Item 3:</span> Detain any catch landed pending verification of legal origin per PSMA Article 18;</li>
+      <li><span class="lead">Item 4:</span> Furnish a written inspection report within <strong>seven (7) days</strong> of vessel arrival.</li>
+    </ol>
+  </section>
+
+  {# ─── Part 4: Evidence Package ─────────────────────────────────────── #}
+  <section class="part-marker" style="page-break-before: always;">
+    <h1 style="font-size: 14pt; margin: 0 0 6pt 0;">Part IV — Evidence Package</h1>
+    <p style="margin: 0; color: #555; font-size: 10pt;">Chain-of-Custody Bundle for Civil and Administrative Proceedings</p>
+  </section>
+
+  <section>
+    <h2><span class="roman">V.</span> Vessel Identity Card</h2>
+    <table class="ref-table" style="font-size: 9.5pt; width: 100%;">
+      <tr><td>Vessel Name</td><td>{{ case.vessel.name | default('—') }}</td></tr>
+      <tr><td>MMSI</td><td><span class="mono">{{ case.vessel.mmsi }}</span></td></tr>
+      <tr><td>IMO</td><td><span class="mono">{{ case.vessel.imo | default('—') }}</span></td></tr>
+      <tr><td>Flag State</td><td>{{ case.vessel.flag | default('—') }}</td></tr>
+      <tr><td>Gear Type</td><td>{{ case.vessel.gear_type | default('—') }}</td></tr>
+      <tr><td>Length (m)</td><td>{{ case.vessel.length_m | default('—') }}</td></tr>
+      <tr><td>Owner of Record</td><td>{{ case.vessel.owner | default('—') }}</td></tr>
+      <tr><td>Last Position</td><td>{{ last_position_dms | default('—') }}</td></tr>
+      <tr><td>Last Seen</td><td>{{ last_seen_human | default('—') }}</td></tr>
+    </table>
+  </section>
+
+  {% if case.events %}
+  <section>
+    <h2><span class="roman">VI.</span> Event Timeline</h2>
+    <table class="ref-table" style="font-size: 9pt; width: 100%;">
+      <tr style="border-bottom: 1px solid #c4c0b0;">
+        <td style="width: 18%;">Type</td>
+        <td style="width: 26%;">Start (UTC)</td>
+        <td style="width: 26%;">End (UTC)</td>
+        <td style="width: 12%; text-align: right;">Duration</td>
+        <td style="width: 18%;">Position</td>
+      </tr>
+      {% for ev in case.events %}
+        <tr>
+          <td><strong>{{ ev.type }}</strong></td>
+          <td><span class="mono">{{ ev.start.isoformat() if ev.start.isoformat is defined else ev.start }}</span></td>
+          <td><span class="mono">{{ ev.end.isoformat() if ev.end and ev.end.isoformat is defined else (ev.end or '—') }}</span></td>
+          <td style="text-align: right;"><span class="mono">{{ '%.2f h'|format(ev.duration_hours) if ev.duration_hours else '—' }}</span></td>
+          <td><span class="mono">{{ '%.4f, %.4f'|format(ev.position.lat, ev.position.lon) }}</span></td>
+        </tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2><span class="roman">VII.</span> Triggered Rules and Citations</h2>
+    <ol class="legal-list">
+      {% for cit in case.citations %}
+        <li>
+          <span class="cite">{{ cit.instrument }}</span>
+          <span style="color: #666; font-size: 9pt;">({{ cit.layer }} · {{ cit.role }})</span><br>
+          <span style="font-size: 9pt; color: #444;">{{ cit.full_title }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="roman">VIII.</span> Risk Assessment Summary</h2>
+    <div class="response-box">
+      {% if case.risk %}
+        <p style="margin-top: 0;">
+          <strong>Classification:</strong> {{ case.risk.classification | upper }} &nbsp;·&nbsp;
+          <strong>Score:</strong> <span class="mono">{{ '%.2f'|format(case.risk.risk_score) }}</span>
+        </p>
+        <p style="margin-bottom: 0; font-style: italic;">{{ case.risk.reasoning }}</p>
+      {% else %}
+        <p style="margin: 0; font-style: italic; color: #777;">Risk assessment narrative attached as cover memorandum.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="roman">IX.</span> Chain of Custody</h2>
+    <p style="margin-top: 0;">
+      This combined legal package is anchored to a SHA-256 hash printed in the footer. The hash is computed over the canonical HTML, so any modification breaks verification. Independent verification: <span class="mono">shasum -a 256 legal_package.canonical.html</span> equals the footer value.
+    </p>
+  </section>
+
+{% endblock %}

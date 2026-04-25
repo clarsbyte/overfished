@@ -18,6 +18,7 @@ DocType = Literal[
     "cease_and_desist_order",
     "port_inspection_order",
     "evidence_package",
+    "combined_legal_package",
 ]
 
 
@@ -29,3 +30,10 @@ def render_document(case: CaseFile, doc_type: DocType) -> DocumentArtifact:
 def render_full_document_family(case: CaseFile) -> list[DocumentArtifact]:
     """Render all four documents from a single CaseFile."""
     return asyncio.run(_render_family(case))
+
+
+def render_combined_legal_pdf(case: CaseFile) -> DocumentArtifact:
+    """Render a single combined legal package PDF (Notice of Violation, Cease
+    and Desist, Port Inspection Order, Evidence Package) from one CaseFile.
+    One Chromium render, one PDF on disk."""
+    return asyncio.run(_render_one(case, "combined_legal_package"))

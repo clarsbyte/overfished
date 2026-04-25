@@ -15,10 +15,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
+import comms_lookup
 from documents.render import render_document_family
 from fixtures._loader import load_model
 from tools import comms, cv_bridge, fines, ports, region, regulations, risk, vessels
@@ -175,3 +177,196 @@ def case_fine(case_id: str):
     citations_list = regulations.build_citation_roster(rules, region_ctx)
     assessment = risk.calculate_risk(case.vessel, case.events, rules, region_ctx)
     return fines.calculate_fine(case.vessel, assessment, region_ctx, rules, citations_list)
+
+
+# ── Twilio AI conversation webhooks ─────────────────────────────────────
+#
+# Flow:
+#   1. POST /case/{case_id}/ai-call kicks off an outbound Twilio call.
+#   2. Twilio answers and POSTs to /twilio/voice/start, which returns TwiML
+#      that says the warning, then <Gather>s the caller's speech.
+#   3. Each user turn POSTs to /twilio/voice/respond. We ask Claude Haiku to
+#      reply using only the case PDF as evidence, speak the reply, and
+#      <Gather> again until the caller hangs up.
+
+TWIML_VOICE = "Polly.Joanna-Neural"
+DEFAULT_AI_CASE_ID = comms_lookup.DEFAULT_DEMO_CASE_ID
+DEFAULT_AI_DOC = comms_lookup.DEFAULT_DEMO_DOC
+
+
+def _twiml(body: str) -> Response:
+    xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<Response>{body}</Response>'
+    return Response(content=xml, media_type="application/xml")
+
+
+def _xml_escape(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+def _gather(action_url: str, prompt: str) -> str:
+    return (
+        f'<Gather input="speech" action="{_xml_escape(action_url)}" method="POST" '
+        f'speechTimeout="auto" timeout="6" language="en-US">'
+        f'<Say voice="{TWIML_VOICE}">{_xml_escape(prompt)}</Say>'
+        f'</Gather>'
+    )
+
+
+def _respond_action_url(request: Request, vessel_name: str, mmsi: str, case_id: str, doc: str) -> str:
+    base = str(request.base_url).rstrip("/")
+    from urllib.parse import urlencode
+
+    qs = urlencode(
+        {"vessel_name": vessel_name, "mmsi": mmsi, "case_id": case_id, "doc": doc}
+    )
+    return f"{base}/twilio/voice/respond?{qs}"
+
+
+@app.post("/twilio/voice/start")
+async def twilio_voice_start(request: Request):
+    """Initial TwiML when Twilio connects the call.
+
+    Reads ``vessel_name``, ``mmsi``, ``case_id``, ``doc`` from the query string,
+    registers a per-CallSid session pre-loaded with the evidence PDF, says the
+    fixed warning, then gathers the caller's first question.
+    """
+    qp = request.query_params
+    vessel_name = qp.get("vessel_name", "Unknown Vessel")
+    mmsi = qp.get("mmsi", "000000000")
+    case_id = qp.get("case_id", DEFAULT_AI_CASE_ID)
+    doc = qp.get("doc", DEFAULT_AI_DOC)
+
+    form = await request.form()
+    call_sid = form.get("CallSid", "")
+
+    try:
+        comms_lookup.register_call_session(
+            call_sid, vessel_name=vessel_name, mmsi=mmsi, case_id=case_id, doc_filename=doc
+        )
+    except FileNotFoundError as exc:
+        # No evidence PDF — speak the warning then end the call.
+        warning = comms_lookup.build_warning_text(vessel_name)
+        body = (
+            f'<Say voice="{TWIML_VOICE}">{_xml_escape(warning)}</Say>'
+            f'<Say voice="{TWIML_VOICE}">'
+            f'Case file unavailable: {_xml_escape(str(exc))}.'
+            f'</Say><Hangup/>'
+        )
+        return _twiml(body)
+
+    warning = comms_lookup.build_warning_text(vessel_name)
+    action_url = _respond_action_url(request, vessel_name, mmsi, case_id, doc)
+    body = (
+        f'<Say voice="{TWIML_VOICE}">{_xml_escape(warning)}</Say>'
+        f'<Pause length="1"/>'
+        + _gather(action_url, "Do you have any questions about this notice?")
+        + f'<Say voice="{TWIML_VOICE}">No response received. Goodbye.</Say><Hangup/>'
+    )
+    return _twiml(body)
+
+
+@app.post("/twilio/voice/respond")
+async def twilio_voice_respond(request: Request):
+    """Per-turn TwiML: pass the caller's speech to Claude Haiku, speak the reply, gather again."""
+    qp = request.query_params
+    vessel_name = qp.get("vessel_name", "Unknown Vessel")
+    mmsi = qp.get("mmsi", "000000000")
+    case_id = qp.get("case_id", DEFAULT_AI_CASE_ID)
+    doc = qp.get("doc", DEFAULT_AI_DOC)
+
+    form = await request.form()
+    call_sid = form.get("CallSid", "")
+    user_text = (form.get("SpeechResult") or "").strip()
+
+    # Re-register if a fresh process picked up this call (in-memory state lost).
+    if call_sid and not comms_lookup.get_call_session(call_sid):
+        try:
+            comms_lookup.register_call_session(
+                call_sid, vessel_name=vessel_name, mmsi=mmsi, case_id=case_id, doc_filename=doc
+            )
+        except FileNotFoundError:
+            return _twiml(
+                f'<Say voice="{TWIML_VOICE}">Case file unavailable. Goodbye.</Say><Hangup/>'
+            )
+
+    action_url = _respond_action_url(request, vessel_name, mmsi, case_id, doc)
+
+    if not user_text:
+        body = (
+            _gather(action_url, "I did not catch that. Could you repeat your question?")
+            + f'<Say voice="{TWIML_VOICE}">Goodbye.</Say><Hangup/>'
+        )
+        return _twiml(body)
+
+    if any(kw in user_text.lower() for kw in ("goodbye", "good bye", "hang up", "end call", "thank you that is all")):
+        comms_lookup.end_call_session(call_sid)
+        return _twiml(
+            f'<Say voice="{TWIML_VOICE}">Acknowledged. Comply with the order. Goodbye.</Say><Hangup/>'
+        )
+
+    try:
+        reply = comms_lookup.haiku_respond(call_sid, user_text)
+    except Exception as exc:
+        reply = f"System error generating response: {exc}. Please contact the issuing authority directly."
+
+    body = (
+        f'<Say voice="{TWIML_VOICE}">{_xml_escape(reply)}</Say>'
+        + _gather(action_url, "Do you have any other questions?")
+        + f'<Say voice="{TWIML_VOICE}">Goodbye.</Say><Hangup/>'
+    )
+    return _twiml(body)
+
+
+@app.post("/case/{case_id}/ai-call")
+def place_ai_call(case_id: str, body: dict = Body(...)):
+    """Place an outbound Twilio call powered by Claude Haiku.
+
+    Request body::
+
+        {
+          "to_number": "+15551234567",
+          "vessel_name": "LU RONG YUAN YU 666",
+          "mmsi": "412345678",
+          "doc": "combined_legal_package.pdf",  # optional
+          "public_base_url": "https://abc123.ngrok.io"  # optional; required when Twilio cannot reach localhost
+        }
+    """
+    to_number = (body.get("to_number") or "").strip()
+    if not to_number:
+        raise HTTPException(status_code=400, detail="to_number is required")
+
+    vessel_name = body.get("vessel_name") or "Unknown Vessel"
+    mmsi = body.get("mmsi") or "000000000"
+    doc = body.get("doc") or DEFAULT_AI_DOC
+    public_base_url = (body.get("public_base_url") or os.getenv("PUBLIC_BASE_URL", "")).strip()
+    if not public_base_url:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "public_base_url is required (Twilio cannot reach localhost). "
+                "Provide an ngrok URL, or set PUBLIC_BASE_URL in .env."
+            ),
+        )
+
+    from urllib.parse import urlencode
+
+    qs = urlencode(
+        {"vessel_name": vessel_name, "mmsi": mmsi, "case_id": case_id, "doc": doc}
+    )
+    webhook_url = f"{public_base_url.rstrip('/')}/twilio/voice/start?{qs}"
+    from call_lookup import call_with_ai_conversation
+
+    sid = call_with_ai_conversation(to_number, webhook_url)
+    return {
+        "call_sid": sid,
+        "webhook_url": webhook_url,
+        "vessel_name": vessel_name,
+        "mmsi": mmsi,
+        "case_id": case_id,
+    }

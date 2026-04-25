@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "overfished-finetune"
+version = "0.0.1"
+description = "Offline pipeline: FAOLEX scrape → Claude silver labels → fine-tuned LegalBERT NER → Qdrant index. Self-contained; not imported by the live API."
+requires-python = ">=3.11"
+dependencies = [
+    # Scraping
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+
+    # Silver labeling
+    "anthropic>=0.40",
+    "nltk>=3.8",
+
+    # Training
+    "transformers>=4.40",
+    "datasets>=2.18",
+    "torch>=2.2",
+    "accelerate>=0.30",
+    "seqeval>=1.2",
+
+    # Embedding + indexing (shared with backend runtime)
+    "sentence-transformers>=2.7",
+    "qdrant-client>=1.9",
+
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Use `pip install -e .[lora]` to enable the --lora flag in train.py.
+# Default training path freezes the embedding + bottom-6 encoder layers
+# instead, which gives similar regularization on tiny silver datasets
+# without the PEFT dependency.
+lora = ["peft>=0.10"]
+
+# Headless-browser fallback for FAOLEX detail pages that require JS rendering.
+# Run `playwright install chromium` after install.
+render = ["playwright>=1.42"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,332 @@
+[
+  {
+    "id": "galapagos-marine-reserve",
+    "name": "Galápagos Marine Reserve & Hermandad Marine Reserve",
+    "country": "ECU",
+    "jurisdiction": "Ecuador — Galápagos National Park Directorate; Ministry of Environment, Water and Ecological Transition",
+    "bbox": {"lat_min": -3.0, "lat_max": 2.5, "lon_min": -94.5, "lon_max": -88.0},
+    "type": "No-take marine reserve (core); restricted-use buffer",
+    "fishlex": {
+      "summary": "Foreign-flagged commercial fishing vessels are prohibited from operating within the GMR and the Hermandad Marine Reserve. Innocent passage is permitted only with continuous AIS, prior notice to the National Park, and no deployment of fishing gear or transshipment.",
+      "fields": {
+        "license_required": "Not issued — foreign commercial fishing access is closed in the reserve.",
+        "gear_limits": "All industrial gear prohibited inside the GMR; longlines specifically prohibited inside Hermandad.",
+        "area_limits": "138,000 km² GMR core + 60,000 km² Hermandad extension closed to all fishing.",
+        "reporting": "VMS reporting required for vessels >20 GT; AIS must remain on at all times in the reserve.",
+        "observer": "Required for any artisanal vessel operating in approved zones.",
+        "transshipment": "Prohibited inside the reserve.",
+        "penalties": "Confiscation of catch and gear, fines under LOREG; criminal liability for repeat offenders.",
+        "access_agreements": "No bilateral access agreements grant foreign commercial fishing rights inside the reserve."
+      },
+      "provenance": {
+        "database": "FISHLEX",
+        "source_url": "https://www.fao.org/fishery/en/legalframework/fishlex/ECU",
+        "last_checked": "2026-04-24",
+        "confidence": "curated"
+      }
+    },
+    "portlex": {
+      "summary": "Ecuador is a party to the FAO Port State Measures Agreement (2016). Foreign vessels suspected of IUU activity may be denied entry; landings are inspected at designated ports.",
+      "fields": {
+        "psma_party": true,
+        "designated_ports": ["Manta", "Guayaquil", "Puerto Ayora"],
+        "advance_notice_hours": 72,
+        "inspection_powers": "Customs and INP inspectors may board, examine logbooks, gear, catch, AIS records, and crew documents.",
+        "denial_grounds": "Listing on an RFMO IUU list; AIS gaps in restricted zones; unverified catch certificates; refusal to cooperate.",
+        "required_documents": ["Catch certificate", "Vessel registration", "Crew list", "Fishing licence (or proof of non-fishing voyage)"]
+      },
+      "provenance": {
+        "database": "PORTLEX",
+        "source_url": "https://www.fao.org/fishery/en/legalframework/portlex/ECU",
+        "last_checked": "2026-04-24",
+        "confidence": "curated"
+      }
+    },
+    "faolex": {
+      "key_records": [
+        {
+          "title": "Ley Orgánica de Régimen Especial de la Provincia de Galápagos (LOREG)",
+          "year": 2015,
+          "country": "ECU",
+          "subject": "Fisheries / Protected Areas",
+          "search_url": "https://www.fao.org/faolex/results/en/?country=ECU&subject=Fisheries&q=Galapagos",
+          "abstract": "Establishes the special regime governing the Galápagos province, including restrictions on industrial fishing, requirements for the National Park, and biosecurity provisions.",
+          "record_id": null
+        },
+        {
+          "title": "Decreto Ejecutivo 319 — Creation of the Hermandad Marine Reserve",
+          "year": 2022,
+          "country": "ECU",
+          "subject": "Marine protected area",
+          "search_url": "https://www.fao.org/faolex/results/en/?country=ECU&q=Hermandad",
+          "abstract": "Creates the 60,000 km² Hermandad Marine Reserve adjoining the GMR, with a fully no-take zone and a longline ban.",
+          "record_id": null
+        }
+      ],
+      "provenance": {
+        "database": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=ECU&subject=Fisheries",
+        "last_checked": "2026-04-24",
+        "confidence": "curated",
+        "notes": "Direct LEX-FAOC record IDs to be populated during FAOLEX CSV ingestion."
+      }
+    },
+    "rules": [
+      {
+        "rule": "All industrial and commercial fishing prohibited within the 138,000 km² Galápagos Marine Reserve.",
+        "applies_to": ["foreign", "domestic-industrial"],
+        "citation": "Ecuador Decreto Ejecutivo 1810 (1998); LOREG (2015)",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=ECU&subject=Fisheries",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Hermandad Marine Reserve (60,000 km²) — all fishing prohibited; longlines specifically banned.",
+        "applies_to": ["foreign", "domestic"],
+        "citation": "Ecuador Decreto Ejecutivo 319, 2022-01-14",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=ECU&q=Hermandad",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Foreign-flagged vessels >20 GT must maintain continuous AIS and VMS reporting in transit; AIS gaps inside the reserve are presumptive evidence of illegal fishing.",
+        "applies_to": ["all"],
+        "citation": "Resolución Consejo de Gobierno 015-2017",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=ECU",
+        "confidence": "curated"
+      }
+    ]
+  },
+  {
+    "id": "philippines-eez",
+    "name": "Philippines Exclusive Economic Zone",
+    "country": "PHL",
+    "jurisdiction": "Republic of the Philippines — Bureau of Fisheries and Aquatic Resources (BFAR), Department of Agriculture",
+    "bbox": {"lat_min": 4.0, "lat_max": 21.5, "lon_min": 116.0, "lon_max": 127.0},
+    "type": "EEZ with embedded no-take MPAs (Tubbataha, Apo Reef)",
+    "fishlex": {
+      "summary": "Foreign commercial fishing in Philippine waters is prohibited absent a specific access agreement. Foreign carriers and reefers must declare port-of-call and may be inspected under PSMA.",
+      "fields": {
+        "license_required": "Commercial Fishing Vessel/Gear License from BFAR — in practice none currently issued to foreign-flagged vessels.",
+        "gear_limits": "Active gear (trawls, purse seines) banned within municipal waters (15 km from shoreline).",
+        "area_limits": "Tubbataha Reefs (97,030 ha) and Apo Reef no-take; closed seasons in Visayan Sea (Nov 15 – Feb 15) and East Sulu Sea/Zamboanga (Dec 1 – Mar 1).",
+        "reporting": "VMS mandatory for commercial vessels ≥3.1 GT.",
+        "observer": "Required on tuna purse seiners under WCPFC and on selected longline operations.",
+        "transshipment": "Requires prior authorization from BFAR.",
+        "penalties": "Fines up to USD 1.2M for foreign IUU; confiscation of vessel, gear, catch.",
+        "access_agreements": "No general access agreement permitting foreign commercial fishing in the EEZ."
+      },
+      "provenance": {
+        "database": "FISHLEX",
+        "source_url": "https://www.fao.org/fishery/en/legalframework/fishlex/PHL",
+        "last_checked": "2026-04-24",
+        "confidence": "curated"
+      }
+    },
+    "portlex": {
+      "summary": "Philippines is a PSMA party. Foreign vessels >12 m must request entry in advance; designated PSMA ports apply enhanced inspection.",
+      "fields": {
+        "psma_party": true,
+        "designated_ports": ["General Santos", "Navotas", "Zamboanga", "Davao"],
+        "advance_notice_hours": 72,
+        "inspection_powers": "BFAR inspectors with Coast Guard support may board, examine, and detain.",
+        "denial_grounds": "RFMO IUU listing; AIS gaps near EEZ boundary or MPAs; absent or invalid catch certificate; transshipment without authorization.",
+        "required_documents": ["Catch certificate", "Vessel registration", "Crew list", "Logbook", "VMS records"]
+      },
+      "provenance": {
+        "database": "PORTLEX",
+        "source_url": "https://www.fao.org/fishery/en/legalframework/portlex/PHL",
+        "last_checked": "2026-04-24",
+        "confidence": "curated"
+      }
+    },
+    "faolex": {
+      "key_records": [
+        {
+          "title": "Republic Act 8550 — Philippine Fisheries Code of 1998 (as amended by RA 10654, 2015)",
+          "year": 1998,
+          "country": "PHL",
+          "subject": "Fisheries / IUU",
+          "search_url": "https://www.fao.org/faolex/results/en/?country=PHL&q=Fisheries+Code",
+          "abstract": "Primary fisheries statute; RA 10654 amendments criminalize IUU fishing and align with FAO international plans of action.",
+          "record_id": null
+        },
+        {
+          "title": "Republic Act 10067 — Tubbataha Reefs Natural Park Act of 2009",
+          "year": 2009,
+          "country": "PHL",
+          "subject": "Marine protected area",
+          "search_url": "https://www.fao.org/faolex/results/en/?country=PHL&q=Tubbataha",
+          "abstract": "Establishes Tubbataha Reefs Natural Park as a no-take MPA with criminal penalties for extraction.",
+          "record_id": null
+        }
+      ],
+      "provenance": {
+        "database": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=PHL&subject=Fisheries",
+        "last_checked": "2026-04-24",
+        "confidence": "curated",
+        "notes": "Direct LEX-FAOC record IDs to be populated during FAOLEX CSV ingestion."
+      }
+    },
+    "rules": [
+      {
+        "rule": "Commercial fishing by foreign-flagged vessels prohibited absent a specific access agreement.",
+        "applies_to": ["foreign"],
+        "citation": "RA 8550 as amended by RA 10654 (2015)",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=PHL",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Closed season for sardines in the Visayan Sea: 15 November – 15 February.",
+        "applies_to": ["all"],
+        "citation": "DA-BFAR JAO 01, Series of 2014",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=PHL&q=Visayan+sardines",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Tubbataha Reefs Natural Park: all extractive activity prohibited within the 97,030 ha core zone.",
+        "applies_to": ["foreign", "domestic"],
+        "citation": "RA 10067 (2009)",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=PHL&q=Tubbataha",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Active gear banned within 15 km municipal waters.",
+        "applies_to": ["commercial"],
+        "citation": "RA 8550 §18; Tano v. Socrates",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?country=PHL",
+        "confidence": "curated"
+      }
+    ]
+  },
+  {
+    "id": "eu-western-mediterranean",
+    "name": "EU Western Mediterranean (GFCM Geographical Subareas 1, 2, 5–11)",
+    "country": "EU",
+    "jurisdiction": "European Union (DG MARE) + General Fisheries Commission for the Mediterranean (GFCM)",
+    "bbox": {"lat_min": 35.0, "lat_max": 44.0, "lon_min": -5.5, "lon_max": 18.0},
+    "type": "Multi-state EEZ + RFMO management area",
+    "fishlex": {
+      "summary": "Non-EU vessels operate under bilateral SFPAs or GFCM access protocols. Catch certificates are required for any imports under the EU IUU Regulation.",
+      "fields": {
+        "license_required": "Yes — non-EU vessels require flag-state authorization plus EU/GFCM port access.",
+        "gear_limits": "Bottom trawling banned within 1.5 nm of coast and at depths <50 m above Posidonia/coralligenous/mäerl. Driftnets prohibited regardless of length.",
+        "area_limits": "Multi-annual demersal plan (Reg 2019/1022); GFCM deep-sea (>1,000 m) bottom-contact ban; Bluefin tuna purse-seine season tightly capped.",
+        "reporting": "VMS, AIS, electronic logbook, and eBCD (bluefin) required.",
+        "observer": "Required on bluefin purse seiners and selected longline fleets.",
+        "transshipment": "Restricted; transshipment of bluefin requires prior ICCAT authorization.",
+        "penalties": "EU IUU listing; vessel may be added to the EU IUU vessel list; fines per Member State.",
+        "access_agreements": "SFPAs with Morocco, Mauritania, etc.; bilateral GFCM cooperation."
+      },
+      "provenance": {
+        "database": "FISHLEX",
+        "source_url": "https://www.fao.org/fishery/en/legalframework/fishlex/EUR",
+        "last_checked": "2026-04-24",
+        "confidence": "curated"
+      }
+    },
+    "portlex": {
+      "summary": "EU implements PSMA via Regulation (EC) 1005/2008. Third-country fishing vessels >12 m must request port entry ≥3 working days in advance and present a catch certificate.",
+      "fields": {
+        "psma_party": true,
+        "designated_ports": ["Algeciras", "Vigo", "Civitavecchia", "Marseille", "Piraeus"],
+        "advance_notice_hours": 72,
+        "inspection_powers": "Inspections of at least 5 % of landings; full document, gear, and catch examination.",
+        "denial_grounds": "EU IUU listing; missing/forged catch certificate; refusal to cooperate; AIS off near EU boundary.",
+        "required_documents": ["EU catch certificate", "Vessel registration", "Crew list", "Logbook", "VMS data", "Flag-state authorization"]
+      },
+      "provenance": {
+        "database": "PORTLEX",
+        "source_url": "https://www.fao.org/fishery/en/legalframework/portlex/EUR",
+        "last_checked": "2026-04-24",
+        "confidence": "curated"
+      }
+    },
+    "faolex": {
+      "key_records": [
+        {
+          "title": "Regulation (EU) 2019/1022 — Multi-annual plan for demersal stocks in the Western Mediterranean",
+          "year": 2019,
+          "country": "EU",
+          "subject": "Fisheries management",
+          "search_url": "https://eur-lex.europa.eu/eli/reg/2019/1022/oj",
+          "abstract": "Establishes a fishing-effort regime for trawlers and TACs for hake, red mullet, deep-water rose shrimp, and other demersal species.",
+          "record_id": null
+        },
+        {
+          "title": "Council Regulation (EC) 1967/2006 — Mediterranean Regulation",
+          "year": 2006,
+          "country": "EU",
+          "subject": "Mediterranean management",
+          "search_url": "https://eur-lex.europa.eu/eli/reg/2006/1967/oj",
+          "abstract": "Includes the 1.5 nm coastal trawling ban, Posidonia/coralligenous/mäerl protections, and gear specifications.",
+          "record_id": null
+        },
+        {
+          "title": "Regulation (EC) 1005/2008 — EU IUU Regulation",
+          "year": 2008,
+          "country": "EU",
+          "subject": "IUU / Port state measures",
+          "search_url": "https://eur-lex.europa.eu/eli/reg/2008/1005/oj",
+          "abstract": "Establishes catch certificate scheme and port state measures for third-country vessels.",
+          "record_id": null
+        }
+      ],
+      "provenance": {
+        "database": "FAOLEX",
+        "source_url": "https://www.fao.org/faolex/results/en/?region=EUR&subject=Fisheries",
+        "last_checked": "2026-04-24",
+        "confidence": "curated",
+        "notes": "EU regulations are linked via EUR-Lex ELI; FAOLEX also indexes them under Regional/EU records."
+      }
+    },
+    "rules": [
+      {
+        "rule": "Bottom trawling prohibited within 1.5 nm of coast or at depths <50 m above Posidonia, coralligenous, or mäerl habitats.",
+        "applies_to": ["all"],
+        "citation": "Council Regulation (EC) 1967/2006, Articles 4 and 13",
+        "source": "FAOLEX",
+        "source_url": "https://eur-lex.europa.eu/eli/reg/2006/1967/oj",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Multi-annual demersal effort regime with TAC for hake, red mullet, deep-water rose shrimp.",
+        "applies_to": ["all"],
+        "citation": "Regulation (EU) 2019/1022",
+        "source": "FAOLEX",
+        "source_url": "https://eur-lex.europa.eu/eli/reg/2019/1022/oj",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Driftnets prohibited regardless of vessel length.",
+        "applies_to": ["all"],
+        "citation": "Council Regulations (EC) 894/97 and (EC) 1239/98",
+        "source": "FAOLEX",
+        "source_url": "https://eur-lex.europa.eu/eli/reg/1997/894/oj",
+        "confidence": "curated"
+      },
+      {
+        "rule": "GFCM deep-sea closed area: bottom-contact gear prohibited below 1,000 m depth.",
+        "applies_to": ["all"],
+        "citation": "GFCM Recommendation GFCM/29/2005/1",
+        "source": "FAOLEX",
+        "source_url": "https://www.fao.org/gfcm/data/decisions/en/",
+        "confidence": "curated"
+      },
+      {
+        "rule": "Bluefin tuna catch only under ICCAT quota with electronic Bluefin Catch Document; tightly restricted purse-seine season.",
+        "applies_to": ["all"],
+        "citation": "Regulation (EU) 2023/2053; ICCAT Recommendation 22-08",
+        "source": "FAOLEX",
+        "source_url": "https://eur-lex.europa.eu/eli/reg/2023/2053/oj",
+        "confidence": "curated"
+      }
+    ]
+  }
+]
