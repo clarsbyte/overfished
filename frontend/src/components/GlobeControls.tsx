@@ -44,7 +44,7 @@ export function useGlobeControls(): GlobeControlsState {
   const flightControls = useControls(
     "Vessel traffic",
     {
-      flightCount: { value: 250, min: 0, max: 500, step: 5, label: "Vessel count" },
+      flightCount: { value: 60, min: 0, max: 500, step: 5, label: "Vessel count" },
     },
     { collapsed: false },
   );

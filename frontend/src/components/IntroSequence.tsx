@@ -26,10 +26,10 @@ export function IntroSequence({ onComplete }: Props) {
   useEffect(() => {
     if (skipped) return;
     const timers = [
-      setTimeout(() => setStage("connect"), 1000),
-      setTimeout(() => setStage("reveal"), 2200),
-      setTimeout(() => setStage("done"), 3800),
-      setTimeout(() => onComplete(), 4000),
+      setTimeout(() => setStage("connect"), 300),
+      setTimeout(() => setStage("reveal"), 800),
+      setTimeout(() => setStage("done"), 1000),
+      setTimeout(() => onComplete(), 1200),
     ];
     return () => timers.forEach(clearTimeout);
   }, [skipped, onComplete]);
