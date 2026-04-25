@@ -1,5 +1,36 @@
+# Web
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+
+# Templating + PDF rendering
+jinja2>=3.1
+playwright>=1.42
+
+# Geospatial
+shapely>=2.0
+# geopandas — heavy install; defer until we wire real GFW data
+
+# HTTP / parsing
+requests>=2.31
+httpx>=0.27           # used by tools.gfw_client (async HTTP)
+beautifulsoup4>=4.12
+lxml>=5.0
+
+# Service SDKs (used in real-mode branches; fixture mode does not need them)
+google-generativeai>=0.3
+elevenlabs>=1.0
+cloudinary>=1.39
+
+# Env / config
+python-dotenv>=1.0
+
+# Existing AIS streaming integration (kept alongside new tools/)
 langchain>=0.3.0
 langchain-anthropic>=0.3.0
 langchain-core>=0.3.0
 websockets>=12.0
-python-dotenv>=1.0.0
+
+# Test
+pytest>=8.0
+pytest-asyncio>=0.23
