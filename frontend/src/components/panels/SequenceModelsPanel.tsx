@@ -7,7 +7,7 @@ import { SequencePredictionsList } from "./SequencePredictionsList";
 
 type ModelTab = "rnn" | "bilstm";
 
-export function SequenceModelsPanel() {
+export function SequenceModelsPanel({ className }: { className?: string }) {
   const { data, error, isPending, run } = useSequenceReport();
   const [epochs, setEpochs] = useState(1);
   const [seqLen, setSeqLen] = useState(3);
@@ -48,6 +48,7 @@ export function SequenceModelsPanel() {
     <CollapsiblePanel
       id="sequence-models"
       title="RNN + Bi-LSTM"
+      className={className}
       titleShort="Models"
       icon={
         <span className="flex items-center gap-0.5">

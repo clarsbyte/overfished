@@ -31,6 +31,7 @@ function coerceOutput(out: AgentRunResponse["output"] | undefined): string {
 
 interface Props {
   selectedShip: Ship | null;
+  className?: string;
 }
 
 type TabId = "gfw" | "vessel" | "law" | "complete";
@@ -42,7 +43,7 @@ const TABS: { id: TabId; label: string; icon: JSX.Element; eta: string }[] = [
   { id: "complete", label: "Complete", icon: <Workflow size={12} />, eta: "60-120 s" },
 ];
 
-export function AgentsPanel({ selectedShip }: Props) {
+export function AgentsPanel({ selectedShip, className }: Props) {
   const [tab, setTab] = useState<TabId>("gfw");
   const [query, setQuery] = useState("");
   const [lat, setLat] = useState("");
@@ -97,6 +98,7 @@ export function AgentsPanel({ selectedShip }: Props) {
       title="Agents"
       icon={<Bot size={14} />}
       status={status}
+      className={className}
       badge={
         selectedShip ? (
           <span className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[10px] text-slate2-400">

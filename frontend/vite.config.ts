@@ -17,16 +17,16 @@ export default defineConfig({
     proxy: {
       // Proxy backend API + static so the demo runs same-origin during dev.
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ""),
       },
       "/static": {
-        target: "http://localhost:8000",
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
       },
       "/agentapi": {
-        target: "http://localhost:8001",
+        target: "http://127.0.0.1:8001",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/agentapi/, ""),
       },

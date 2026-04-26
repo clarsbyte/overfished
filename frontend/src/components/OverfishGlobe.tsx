@@ -543,7 +543,7 @@ export function OverfishGlobe({
           return "rgba(255,210,50,0.72)";
         }}
         pointAltitude={0.01}
-        pointRadius={0.12}
+        pointRadius={0.35}
         pointResolution={3}
         pointsMerge={true}
         pointsTransitionDuration={0}

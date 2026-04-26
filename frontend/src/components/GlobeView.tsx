@@ -15,7 +15,10 @@ interface GlobePoint {
 
 interface GlobeInstance {
   globeImageUrl: (url: string) => GlobeInstance;
+  backgroundImageUrl: (url: string) => GlobeInstance;
   backgroundColor: (value: string) => GlobeInstance;
+  atmosphereColor: (value: string) => GlobeInstance;
+  atmosphereAltitude: (value: number) => GlobeInstance;
   pointsData: (value: GlobePoint[]) => GlobeInstance;
   pointLat: (value: keyof GlobePoint) => GlobeInstance;
   pointLng: (value: keyof GlobePoint) => GlobeInstance;
@@ -91,22 +94,23 @@ export const GlobeView = forwardRef<GlobeHandle, Props>(function GlobeView(
       const mod = await import("globe.gl");
       if (!isMounted || !containerRef.current) return;
       const globe = new mod.default(containerRef.current) as unknown as GlobeInstance;
-      const { clientWidth, clientHeight } = containerRef.current;
       globe
         .globeImageUrl("//unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
-        .backgroundColor("rgba(0,0,0,0)")
+        .backgroundImageUrl("//unpkg.com/three-globe/example/img/night-sky.png")
+        .atmosphereColor("#00b3ff")
+        .atmosphereAltitude(0.22)
         .pointLat("lat")
         .pointLng("lng")
         .pointColor((point: GlobePoint) => point.color)
-        .pointAltitude((point: GlobePoint) => (point.selected ? 0.03 : 0.015))
-        .pointRadius((point: GlobePoint) => (point.selected ? 0.18 : 0.12))
-        .pointResolution(12)
+        .pointAltitude(0)
+        .pointRadius((point: GlobePoint) => (point.selected ? 0.5 : 0.35))
+        .pointResolution(3)
         .pointsMerge(false)
         .pointsTransitionDuration(250)
         .pointLabel((point: GlobePoint) => `${point.name ?? point.mmsi} (${point.mmsi})`)
         .onPointClick((point: GlobePoint) => onSelectRef.current(point.ship))
-        .width(clientWidth)
-        .height(clientHeight)
+        .width(window.innerWidth)
+        .height(window.innerHeight)
         .pointOfView(DEFAULT_VIEW, 0);
 
       const controls = globe.controls();
@@ -131,9 +135,9 @@ export const GlobeView = forwardRef<GlobeHandle, Props>(function GlobeView(
 
   useEffect(() => {
     const handleResize = () => {
-      if (!containerRef.current || !globeRef.current) return;
-      globeRef.current.width(containerRef.current.clientWidth);
-      globeRef.current.height(containerRef.current.clientHeight);
+      if (!globeRef.current) return;
+      globeRef.current.width(window.innerWidth);
+      globeRef.current.height(window.innerHeight);
       globeRef.current.pointOfView(viewRef.current, 0);
     };
     handleResize();
@@ -141,5 +145,5 @@ export const GlobeView = forwardRef<GlobeHandle, Props>(function GlobeView(
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  return <div ref={containerRef} className="globe-canvas h-full w-full" />;
+  return <div ref={containerRef} className="globe-canvas fixed inset-0 -z-10" />;
 });
