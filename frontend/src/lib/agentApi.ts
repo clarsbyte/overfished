@@ -67,6 +67,28 @@ export interface SuspectWindow {
   confidence: number;
   note: string;
 }
+
+export type ModelRisk = "safe" | "uncertain" | "spoof_suspect";
+
+export interface PerMmsiSummary {
+  mmsi: string;
+  n_windows: number;
+  top1_match_rate: number;
+  mean_confidence: number;
+  alias_mmsi: string | null;
+  alias_share: number;
+  model_risk: ModelRisk;
+  narration: string;
+}
+
+export interface ModelContext {
+  selected: PerMmsiSummary | null;
+  nearby: PerMmsiSummary[];
+  report_narration: string | null;
+  generated_at: string | null;
+  source: "demo" | "canonical" | null;
+}
+
 export interface SequenceReport {
   class_to_mmsi: Record<string, string>;
   feature_columns: string[];
@@ -76,7 +98,15 @@ export interface SequenceReport {
   bilstm: SequenceModelBlock;
   ensemble: SequenceEnsembleBlock | null;
   suspect_readout: { suspect_windows: SuspectWindow[]; count: number };
+  per_mmsi_summary?: Record<string, PerMmsiSummary>;
   narration?: string;
+}
+
+export interface SequenceLatest {
+  ready: boolean;
+  report: SequenceReport | null;
+  generated_at: string | null;
+  source: "demo" | "canonical" | null;
 }
 
 export interface SequenceReportRequest {
@@ -107,4 +137,6 @@ export const agentApi = {
   sequenceDemo: () => get<SequenceReport>("/ml/sequence/demo"),
   sequenceReport: (body: SequenceReportRequest) =>
     post<SequenceReport>("/ml/sequence/report", body),
+  sequenceLatest: () => get<SequenceLatest>("/ml/sequence/latest"),
+  sequenceRunCanonical: () => post<SequenceReport>("/ml/sequence/run-canonical"),
 };

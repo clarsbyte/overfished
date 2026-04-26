@@ -172,7 +172,7 @@ export default function App() {
     <div className="space-canvas flex h-screen w-screen overflow-hidden text-slate2-200">
 
       {/* LEFT: Navigation sidebar */}
-      <div className="z-20 m-3 mr-0 flex-shrink-0">
+      <div className="z-20 m-3 mr-0 flex-shrink-0 h-[calc(100vh-1.5rem)] flex items-center">
         <AquaWatchSidebar
           activeView={activeView}
           onNavigate={setActiveView}

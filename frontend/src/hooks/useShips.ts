@@ -2,8 +2,9 @@ import { useQueries } from "@tanstack/react-query";
 import type { Feature, FeatureCollection, LineString } from "geojson";
 import { useMemo } from "react";
 
-import { api, type GlobalVesselTrack, type Risk } from "@/lib/api";
+import { api, getDemoApiBase, type GlobalVesselTrack, type Risk } from "@/lib/api";
 import { bool, fetchCSV, num } from "@/lib/csv";
+import { useSequenceLatest } from "@/hooks/useSequenceLatest";
 import type { Ship, ShipSource } from "@/types/ship";
 
 interface ShipsResult {
@@ -47,13 +48,15 @@ export function useShips(): ShipsResult {
       },
       {
         queryKey: ["csv", "gold_vessel_detections_enriched"],
-        queryFn: () => fetchCSV("/data/gold_vessel_detections_enriched.csv"),
+        queryFn: () =>
+          fetchCSV(`${getDemoApiBase()}/datasets/gold_vessel_detections_enriched`),
         staleTime: Infinity,
       },
     ],
   });
 
   const [vesselsQ, globalTracksQ, sarRawQ, sarEnrichedQ] = queries;
+  const seq = useSequenceLatest();
 
   return useMemo<ShipsResult>(() => {
     const merged = new Map<string, Ship>();
@@ -162,7 +165,21 @@ export function useShips(): ShipsResult {
     }
     if (sarEnrichedQ.error) errors.push(`sar-enriched: ${(sarEnrichedQ.error as Error).message}`);
 
-    const ships = [...merged.values()].filter((s) => s.mmsi);
+    const baseShips = [...merged.values()].filter((s) => s.mmsi);
+    const ships: Ship[] = seq.byMmsi.size
+      ? baseShips.map((s) => {
+          const m = seq.byMmsi.get(s.mmsi);
+          if (!m) return s;
+          return {
+            ...s,
+            modelRisk: m.model_risk,
+            modelConfidence: m.mean_confidence,
+            modelAliasMmsi: m.alias_mmsi,
+            modelMatchRate: m.top1_match_rate,
+            modelNarration: m.narration,
+          };
+        })
+      : baseShips;
 
     return {
       ships,
@@ -172,5 +189,5 @@ export function useShips(): ShipsResult {
       errors,
       bySource,
     };
-  }, [vesselsQ.data, vesselsQ.error, globalTracksQ.data, globalTracksQ.error, sarRawQ.data, sarRawQ.error, sarEnrichedQ.data, sarEnrichedQ.error, queries]);
+  }, [vesselsQ.data, vesselsQ.error, globalTracksQ.data, globalTracksQ.error, sarRawQ.data, sarRawQ.error, sarEnrichedQ.data, sarEnrichedQ.error, queries, seq.byMmsi]);
 }

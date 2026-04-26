@@ -23,11 +23,11 @@ interface SidebarProps {
 export function AquaWatchSidebar({ activeView, onNavigate, totalVessels, isOnline = true }: SidebarProps) {
     return (
         <LiquidGlass
-            className="rounded-[40px] h-full"
+            className="rounded-[40px]"
             chromaticAberration={2}
             depth={10}
         >
-            <div className="w-72 h-full flex flex-col p-6 gap-8 select-none">
+            <div className="w-72 flex flex-col p-6 gap-8 select-none">
                 {/* Brand */}
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-cyan-600/20 rounded-xl flex items-center justify-center border border-cyan-500/30">
@@ -40,7 +40,7 @@ export function AquaWatchSidebar({ activeView, onNavigate, totalVessels, isOnlin
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 space-y-1">
+                <nav className="space-y-1">
                     <NavItem icon={Crosshair} label="Ops" active={activeView === "ops"} onClick={() => onNavigate("ops")} />
                     <NavItem icon={LayoutDashboard} label="Overview" active={activeView === "overview"} onClick={() => onNavigate("overview")} />
                     <NavItem icon={AlertTriangle} label="Incidents" active={activeView === "incidents"} onClick={() => onNavigate("incidents")} />

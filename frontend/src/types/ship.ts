@@ -1,4 +1,5 @@
 import type { Risk } from "@/lib/api";
+import type { ModelRisk } from "@/lib/agentApi";
 
 export type ShipSource =
   | "backend-galapagos"
@@ -19,6 +20,11 @@ export interface Ship {
   timestamp?: string;
   isHighRisk?: boolean;
   durationHours?: number;
+  modelRisk?: ModelRisk;
+  modelConfidence?: number;
+  modelAliasMmsi?: string | null;
+  modelMatchRate?: number;
+  modelNarration?: string;
 }
 
 export const SOURCE_LABEL: Record<ShipSource, string> = {

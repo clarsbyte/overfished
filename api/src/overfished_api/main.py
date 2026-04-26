@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()  # Must run before routers are imported so module-level env vars resolve
 
-from overfished_api.routers import agent, comms, health, regions, sequence, vessels
+from overfished_api.routers import agent, comms, datasets, health, regions, sequence, vessels
 
 
 def create_app() -> FastAPI:
@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     app.mount("/audio", StaticFiles(directory=str(audio_dir)), name="audio")
 
     app.include_router(health.router)
+    app.include_router(datasets.router)
     app.include_router(regions.router)
     app.include_router(vessels.router)
     app.include_router(agent.router)

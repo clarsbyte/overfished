@@ -1,1 +1,114 @@
-{}
+{
+  "412345678": {
+    "mmsi": "412345678",
+    "name": "LU RONG YUAN YU 666",
+    "flag": "CHN",
+    "vessel_type": "longliners",
+    "risk": "confirmed_iuu",
+    "is_high_risk": true,
+    "duration_hours": 5.33,
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Longliner%20Argenova-XXI.jpg?width=640",
+    "summary": "Chinese-flagged longliner with documented AIS-disabling incident in Peru EEZ. Currently inside Galápagos MPA buffer."
+  },
+  "412333002": {
+    "mmsi": "412333002",
+    "name": "ZHE LING YU 88",
+    "flag": "CHN",
+    "vessel_type": "trawlers",
+    "risk": "high_risk",
+    "is_high_risk": true,
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Two%20trawlers%20in%20S%C3%A8te.jpg?width=640",
+    "summary": "Chinese stern trawler operating near the Galápagos MPA boundary; pattern consistent with high-effort transshipment runs."
+  },
+  "412333003": {
+    "mmsi": "412333003",
+    "name": "FU YUAN YU 333",
+    "flag": "CHN",
+    "vessel_type": "longliners",
+    "risk": "high_risk",
+    "is_high_risk": true,
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Longliner%20Janas%20Ross%20Sea%206Dec2009.jpg?width=640",
+    "summary": "Chinese longliner with two prior reflagging events. Slow-speed loitering near MPA edge."
+  },
+  "440112233": {
+    "mmsi": "440112233",
+    "name": "DONG WON 717",
+    "flag": "KOR",
+    "vessel_type": "longliners",
+    "risk": "suspect",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Long%20liner%20in%20Cook%20Strait%2C%20New%20Zealand%201988.jpg?width=640",
+    "summary": "Korean longliner; active but compliant transponder, registered for Pacific tuna."
+  },
+  "224110044": {
+    "mmsi": "224110044",
+    "name": "ALBACORA UNO",
+    "flag": "ESP",
+    "vessel_type": "purse_seiners",
+    "risk": "safe",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Purse%20seine%20in%20Austevoll.jpg?width=640",
+    "summary": "Spanish purse seiner; long-standing IATTC authorization, clean record."
+  },
+  "735056001": {
+    "mmsi": "735056001",
+    "name": "PESCAMAR III",
+    "flag": "ECU",
+    "vessel_type": "purse_seiners",
+    "risk": "safe",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Chilean%20purse%20seine.jpg?width=640",
+    "summary": "Ecuadorian purse seiner home-ported in Manta; routinely inspected by SRP."
+  },
+  "735056002": {
+    "mmsi": "735056002",
+    "name": "MARÍA EUGENIA",
+    "flag": "ECU",
+    "vessel_type": "longliners",
+    "risk": "safe",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Longliner%20bridge.jpg?width=640",
+    "summary": "Ecuadorian artisanal longliner registered for Pacific bigeye tuna."
+  },
+  "725003311": {
+    "mmsi": "725003311",
+    "name": "EL TIBURÓN AZUL",
+    "flag": "PER",
+    "vessel_type": "longliners",
+    "risk": "safe",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Longliner%20Argenova-XXI.jpg?width=640",
+    "summary": "Peruvian longliner working the Humboldt edge; PRODUCE-licensed."
+  },
+  "412333004": {
+    "mmsi": "412333004",
+    "name": "HAI FENG 21",
+    "flag": "CHN",
+    "vessel_type": "trawlers",
+    "risk": "suspect",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Fischerboot%20vor%20Bod%C3%B8.jpg?width=640",
+    "summary": "Chinese trawler with intermittent AIS coverage; registered to a Liberian shell."
+  },
+  "352000119": {
+    "mmsi": "352000119",
+    "name": "MARGARITA STAR",
+    "flag": "PAN",
+    "vessel_type": "purse_seiners",
+    "risk": "safe",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Kapal%20Nelayan%20Purse%20Seine%202.jpg?width=640",
+    "summary": "Panama-flagged purse seiner; IATTC compliant for the 2025-26 season."
+  },
+  "412333005": {
+    "mmsi": "412333005",
+    "name": "JIN HAI 808",
+    "flag": "CHN",
+    "vessel_type": "longliners",
+    "risk": "safe",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Long%20liner%20in%20Cook%20Strait%2C%20New%20Zealand%201988.jpg?width=640",
+    "summary": "Chinese longliner; routine Pacific tuna pattern, no flags."
+  },
+  "440112299": {
+    "mmsi": "440112299",
+    "name": "OYANG 75",
+    "flag": "KOR",
+    "vessel_type": "trawlers",
+    "risk": "safe",
+    "image_source_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Colby%20Lee%20Fishing%20Vessel%20Docked%20in%20Salmon%20Harbor%20Marina.jpg?width=640",
+    "summary": "Korean stern trawler; compliant ROK fisheries record."
+  }
+}

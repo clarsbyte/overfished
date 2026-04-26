@@ -102,6 +102,8 @@ interface Props {
   portCalls?: PortCall[];
   /** When provided, these override the leva debug-panel values. */
   layerOverrides?: LayerOverrides;
+  /** When true, disable user pan/zoom/rotate and stop auto-rotate. */
+  cameraLocked?: boolean;
 }
 
 // Blue Marble (NASA): bright daytime imagery, visible continents and oceans.
@@ -126,6 +128,7 @@ export function OverfishGlobe({
   onRegionSelected,
   portCalls = [],
   layerOverrides,
+  cameraLocked = false,
 }: Props) {
   const globeRef = useRef<GlobeMethods>();
 
@@ -173,6 +176,81 @@ export function OverfishGlobe({
       controls.autoRotate = false;
     }
   }, [draw.mode]);
+
+  // Camera lock: when true, freeze pan/zoom/rotate and stop auto-rotate.
+  // Used by the click-a-region cinematic so the camera holds steady on the
+  // selected region. We do this in two phases:
+  //   1. Immediately disable user-driven controls + auto-rotate (so the
+  //      pointOfView fly-in is the only allowed motion).
+  //   2. After the ~2.2s pointOfView animation settles, snapshot the camera
+  //      pose and pin it on every controls "change" event — anything that
+  //      tries to nudge the camera (residual inertia, accidental input,
+  //      damping tail) gets snapped back to the snapshot.
+  // Restoring on unlock re-enables interaction + auto-rotate.
+  useEffect(() => {
+    const orbit = globeRef.current?.controls() as
+      | {
+          autoRotate: boolean;
+          enableZoom: boolean;
+          enablePan: boolean;
+          enableRotate: boolean;
+          enableDamping: boolean;
+          object: THREE.Camera;
+          target: THREE.Vector3;
+          update: () => void;
+          addEventListener: (event: string, cb: () => void) => void;
+          removeEventListener: (event: string, cb: () => void) => void;
+        }
+      | undefined;
+    if (!orbit) return;
+
+    if (!cameraLocked) {
+      orbit.enableZoom = true;
+      orbit.enablePan = true;
+      orbit.enableRotate = true;
+      orbit.enableDamping = true;
+      orbit.autoRotate = true;
+      return;
+    }
+
+    // Phase 1: hard-disable user input immediately.
+    orbit.autoRotate = false;
+    orbit.enableZoom = false;
+    orbit.enablePan = false;
+    orbit.enableRotate = false;
+    orbit.enableDamping = false; // kill any inertia tail
+
+    let pinning = false;
+    let pinPos: THREE.Vector3 | null = null;
+    let pinTarget: THREE.Vector3 | null = null;
+    let onChange: (() => void) | null = null;
+
+    // Phase 2: after the fly-in finishes, snapshot pose and start enforcing.
+    const settleMs = 2400;
+    const settleId = window.setTimeout(() => {
+      pinPos = orbit.object.position.clone();
+      pinTarget = orbit.target.clone();
+      pinning = true;
+      onChange = () => {
+        if (!pinning || !pinPos || !pinTarget) return;
+        // Snap back if anything moved.
+        if (
+          !orbit.object.position.equals(pinPos) ||
+          !orbit.target.equals(pinTarget)
+        ) {
+          orbit.object.position.copy(pinPos);
+          orbit.target.copy(pinTarget);
+        }
+      };
+      orbit.addEventListener("change", onChange);
+    }, settleMs);
+
+    return () => {
+      window.clearTimeout(settleId);
+      pinning = false;
+      if (onChange) orbit.removeEventListener("change", onChange);
+    };
+  }, [cameraLocked]);
 
   // ── Data ─────────────────────────────────────────────────────────────
   const vesselsQ = useQuery({ queryKey: ["vessels"], queryFn: () => api.vessels() });
@@ -656,23 +734,48 @@ export function OverfishGlobe({
         }
         polygonAltitude={(d: object) => {
           const p = d as AnyPoly;
-          if (p.kind === "region_click_target") return 0.001; // flat to avoid visual lift
+          if (p.kind === "region_click_target") {
+            // Lift risky regions slightly so the tint reads against the globe.
+            const r = p.region.risk;
+            if (r === "confirmed_iuu" || r === "high_risk") return 0.006;
+            if (r === "suspect") return 0.003;
+            return 0.001; // safe — keep invisible
+          }
           return 0.012;
         }}
         polygonCapColor={(d: object) => {
           const p = d as AnyPoly;
-          if (p.kind === "region_click_target") return "rgba(0, 0, 0, 0)"; // INVISIBLE click target
+          if (p.kind === "region_click_target") {
+            const r = p.region.risk;
+            if (r === "confirmed_iuu") return "rgba(255, 31, 77, 0.22)";
+            if (r === "high_risk") return "rgba(255, 138, 0, 0.18)";
+            if (r === "suspect") return "rgba(255, 212, 0, 0.10)";
+            return "rgba(0, 0, 0, 0)"; // safe — invisible
+          }
           if (p.kind === "mpa") return "rgba(0, 255, 224, 0.10)";
           return "rgba(0, 255, 224, 0.22)"; // committed user-drawn region
         }}
-        polygonSideColor={(d: object) =>
-          (d as AnyPoly).kind === "region_click_target"
-            ? "rgba(0, 0, 0, 0)"
-            : "rgba(0, 255, 224, 0.06)"
-        }
-        polygonStrokeColor={(d: object) =>
-          (d as AnyPoly).kind === "region_click_target" ? "rgba(0, 0, 0, 0)" : "#00ffe0"
-        }
+        polygonSideColor={(d: object) => {
+          const p = d as AnyPoly;
+          if (p.kind === "region_click_target") {
+            const r = p.region.risk;
+            if (r === "confirmed_iuu") return "rgba(255, 31, 77, 0.10)";
+            if (r === "high_risk") return "rgba(255, 138, 0, 0.08)";
+            return "rgba(0, 0, 0, 0)";
+          }
+          return "rgba(0, 255, 224, 0.06)";
+        }}
+        polygonStrokeColor={(d: object) => {
+          const p = d as AnyPoly;
+          if (p.kind === "region_click_target") {
+            const r = p.region.risk;
+            if (r === "confirmed_iuu") return "#ff1f4d";
+            if (r === "high_risk") return "#ff8a00";
+            if (r === "suspect") return "rgba(255, 212, 0, 0.7)";
+            return "rgba(0, 0, 0, 0)";
+          }
+          return "#00ffe0";
+        }}
         polygonLabel={(d: object) => {
           const p = d as AnyPoly;
           if (p.kind !== "region_click_target") return "";
