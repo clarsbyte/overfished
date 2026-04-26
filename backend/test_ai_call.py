@@ -69,7 +69,7 @@ def repl() -> int:
             print("  Acknowledged. Comply with the order. Goodbye.")
             break
         try:
-            reply = comms_lookup.haiku_respond("LOCAL_REPL_SID", user)
+            reply = comms_lookup.gemma_respond("LOCAL_REPL_SID", user)
         except Exception as exc:
             print(f"  ERROR: {exc}", file=sys.stderr)
             continue

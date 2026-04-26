@@ -9,14 +9,13 @@ Or import and call `run_agent(x, y, radius)`.
 from __future__ import annotations
 
 import argparse
-import os
 
 from dotenv import load_dotenv
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 
+from services.llm import build_chat_llm
 from vessel_lookup import vessels_within_radius
 
 load_dotenv()
@@ -81,11 +80,8 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_agent_executor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise RuntimeError("ANTHROPIC_API_KEY is not set. Copy .env.example to .env and fill it in.")
-
-    llm = ChatAnthropic(model=model, temperature=0)
+def build_agent_executor(model: str | None = None) -> AgentExecutor:
+    llm = build_chat_llm("light", model=model)
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", SYSTEM_PROMPT),

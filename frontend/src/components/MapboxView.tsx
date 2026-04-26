@@ -1,5 +1,11 @@
-import type { FeatureCollection, GeoJsonProperties, Geometry, LineString } from "geojson";
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import type {
+  FeatureCollection,
+  GeoJsonProperties,
+  Geometry,
+  LineString,
+  Point,
+} from "geojson";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Map, {
   Layer,
   Marker,
@@ -32,13 +38,43 @@ interface Props {
   selected: Ship | null;
   onSelect: (ship: Ship | null) => void;
   speciesOverlay?: FeatureCollection<Geometry, GeoJsonProperties> | null;
+  showPlastic?: boolean;
 }
 
+type RiverPlasticFC = FeatureCollection<Point, { t_yr: number }>;
+
+const PLASTIC_DATA_URL = "/data/river_plastic_emissions.geojson";
+
 export const MapboxView = forwardRef<MapboxHandle, Props>(function MapboxView(
-  { ships, tracks, selected, onSelect, speciesOverlay },
+  { ships, tracks, selected, onSelect, speciesOverlay, showPlastic = false },
   ref,
 ) {
   const mapRef = useRef<MapRef | null>(null);
+  const plasticCacheRef = useRef<RiverPlasticFC | null>(null);
+  const [plasticData, setPlasticData] = useState<RiverPlasticFC | null>(null);
+
+  useEffect(() => {
+    if (!showPlastic) return;
+    if (plasticCacheRef.current) {
+      setPlasticData(plasticCacheRef.current);
+      return;
+    }
+    let cancelled = false;
+    fetch(PLASTIC_DATA_URL)
+      .then((r) => r.json() as Promise<RiverPlasticFC>)
+      .then((fc) => {
+        if (cancelled) return;
+        plasticCacheRef.current = fc;
+        setPlasticData(fc);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPlasticData(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showPlastic]);
 
   useImperativeHandle(ref, () => ({
     flyTo: (lon, lat, zoom = 6) => {
@@ -65,13 +101,19 @@ export const MapboxView = forwardRef<MapboxHandle, Props>(function MapboxView(
     Array.isArray(speciesOverlay.features) &&
     speciesOverlay.features.length > 0;
 
+  const hasPlasticFeatures =
+    showPlastic &&
+    plasticData &&
+    Array.isArray(plasticData.features) &&
+    plasticData.features.length > 0;
+
   return (
     <Map
       ref={mapRef}
       mapboxAccessToken={TOKEN}
       mapStyle="mapbox://styles/mapbox/dark-v11"
       initialViewState={{ longitude: -90, latitude: 0, zoom: 1.8 }}
-      projection={{ name: "globe" }}
+      projection={{ name: "mercator" }}
       style={{ width: "100%", height: "100%" }}
       reuseMaps
     >
@@ -100,6 +142,38 @@ export const MapboxView = forwardRef<MapboxHandle, Props>(function MapboxView(
           }}
         />
       </Source>
+
+      {hasPlasticFeatures && plasticData && (
+        <Source id="plastic-rivers" type="geojson" data={plasticData}>
+          <Layer
+            id="plastic-rivers-circles"
+            type="circle"
+            paint={{
+              "circle-radius": [
+                "interpolate",
+                ["linear"],
+                ["get", "t_yr"],
+                0,
+                2,
+                100,
+                16,
+              ],
+              "circle-color": [
+                "interpolate",
+                ["linear"],
+                ["get", "t_yr"],
+                0,
+                "#00d4ff",
+                100,
+                "#e040fb",
+              ],
+              "circle-opacity": 0.78,
+              "circle-stroke-width": 0.4,
+              "circle-stroke-color": "rgba(0,8,20,0.9)",
+            }}
+          />
+        </Source>
+      )}
 
       {hasSpeciesFeatures && (
         <Source id="species-exposure" type="geojson" data={speciesOverlay}>

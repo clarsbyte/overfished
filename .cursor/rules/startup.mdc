@@ -1,0 +1,12 @@
+---
+description: When the user says "startup", run the full local dev stack
+alwaysApply: true
+---
+
+# Project keyword: startup
+
+If the user says **startup** (or asks to start the full app / everything / ML / agents / PDF) without other constraints, from the monorepo root run:
+
+`./scripts/startup.sh`
+
+The script (unless `STARTUP_QUICK=1`) can also install or repair the Python stack, install Playwright Chromium, run a local sequence-model smoke test, and pre-render demo PDFs; then it runs the demo API on 8000, the BFF (agents + `/ml/sequence/…`) on 8001, and Vite on 5173. See the **startup** section in the root [README](README.md) for details and environment flags.

@@ -1,0 +1,9 @@
+
+> overfish-ai-frontend@0.2.0 predev
+> node scripts/link-data.mjs && npm run codegen
+
+[link-data] ok
+
+> overfish-ai-frontend@0.2.0 codegen
+> node scripts/run-codegen.mjs
+

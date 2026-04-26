@@ -13,12 +13,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
 from dotenv import load_dotenv
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_anthropic import ChatAnthropic
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 
 from comms_lookup import generate_vessel_warning
@@ -26,9 +24,11 @@ from gfw_lookup import (
     VesselRecord,
     get_vessel_events,
     get_vessel_insights,
+    is_fishing_vessel,
     pick_best_vessel,
     search_vessel,
 )
+from services.llm import build_chat_llm
 
 load_dotenv()
 
@@ -47,11 +47,16 @@ def _format_vessel(v: VesselRecord) -> str:
         )
         or "(none on record)"
     )
+    ship_types = ", ".join(v.ship_types) or "(none on record)"
+    gear_types = ", ".join(v.gear_types) or "(none on record)"
     return (
         f"vessel_id: {v.vessel_id}\n"
         f"name: {v.name or 'Unknown'}\n"
         f"mmsi: {v.mmsi}  imo: {v.imo}  callsign: {v.callsign}\n"
-        f"flag: {v.flag}  ship_type: {v.ship_type}  gear_type: {v.gear_type}\n"
+        f"flag: {v.flag}\n"
+        f"ship_types (all entries): {ship_types}\n"
+        f"gear_types (all entries): {gear_types}\n"
+        f"primary ship_type: {v.ship_type}  primary gear_type: {v.gear_type}\n"
         f"owners ({len(v.owners)}): {owner_brief}\n"
         f"authorizations ({len(v.authorizations)}): {auth_brief}"
     )
@@ -190,12 +195,20 @@ SYSTEM_PROMPT = """You are an IUU (Illegal, Unreported, Unregulated) fishing ris
 Pipeline (follow this order):
 1. Call `find_vessel` with the user's identifier (MMSI / IMO / name) to get the GFW vessel_id and authorization profile.
 2. FISHING-VESSEL GATE — before any IUU assessment:
-   - Inspect ship_type and gear_type from find_vessel.
-   - If gear_type is empty AND ship_type is not "FISHING" (e.g. CARGO, TANKER,
-     PASSENGER, TUG, PLEASURE), STOP the pipeline and return:
+   - Inspect the FULL `ship_types (all entries)` and `gear_types (all entries)`
+     lists from find_vessel — these aggregate every classification GFW has
+     recorded across the vessel's identity periods (this is what the GFW
+     website surfaces as the vessel's "type").
+   - The vessel IS a fishing vessel if EITHER:
+     a) gear_types is non-empty (any gear like PURSE_SEINES, TRAWLERS,
+        POTS_AND_TRAPS, SET_GILLNETS, ... means fishing-capable by construction), OR
+     b) ship_types contains "FISHING".
+   - Only if BOTH lists fail those checks (e.g. ship_types=[CARGO] / [TANKER] /
+     [PASSENGER] / [TUG] / [PLEASURE_CRAFT] with empty gear_types), STOP the
+     pipeline and return:
        VERDICT: NOT A FISHING VESSEL
        KEY EVIDENCE:
-       - ship_type=<value>, gear_type=<value or none> — vessel is not fishing-capable
+       - ship_types=<list>, gear_types=<list or none> — vessel is not fishing-capable
        CAVEATS:
        - IUU fishing indicators do not apply to non-fishing vessels.
      Do NOT call assess_iuu_insights or list_vessel_events.
@@ -246,16 +259,10 @@ Audio warnings:
 """
 
 
-def build_agent_executor(model: str = "claude-haiku-4-5-20251001") -> AgentExecutor:
-    # Per-vessel IUU classifier — runs up to 15x in parallel from
-    # pipeline_agent.classify_vessels_iuu_batch. Haiku 4.5 keeps wall time
-    # and cost reasonable; the supervisor (pipeline_agent.build_supervisor)
-    # stays on Sonnet for the synthesis step.
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Copy .env.example to .env and fill it in."
-        )
-    llm = ChatAnthropic(model=model, temperature=0)
+def build_agent_executor(model: str | None = None):
+    from langchain.agents import AgentExecutor, create_tool_calling_agent
+    from langchain_core.prompts import ChatPromptTemplate
+    llm = build_chat_llm("light", model=model)
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", SYSTEM_PROMPT),
@@ -297,21 +304,117 @@ def _format_model_context_block(ctx: dict | None) -> str:
     return "\n".join(lines)
 
 
-def classify_vessel(
-    query: str,
-    days_back: int = 365,
-    model_context: dict | None = None,
-) -> str:
-    executor = build_agent_executor()
-    model_block = _format_model_context_block(model_context)
-    prefix = (model_block + "\n\n") if model_block else ""
-    question = (
-        f"{prefix}"
-        f"Assess IUU fishing risk for vessel {query!r} using GFW data over the last "
-        f"{days_back} days. Follow the pipeline and return the formatted verdict."
+_CLASSIFY_PROMPT = """\
+You are an IUU fishing risk analyst. All GFW data has been pre-fetched — do NOT call any tools.
+Analyse the data below and return your verdict in the exact format shown.
+
+--- VESSEL IDENTITY ---
+{vessel}
+
+--- IUU INSIGHTS (last {days_back} days) ---
+{insights}
+
+--- FISHING EVENTS (last {days_back} days) ---
+{fishing_events}
+
+--- AIS GAP EVENTS (last {days_back} days) ---
+{gap_events}
+
+Calibration rules (apply after anti-bias check — default to LOW unless a named indicator is present):
+- RFMO IUU list match → HIGH
+- Two+ long AIS gaps (>12 h) starting/ending inside an MPA → HIGH
+- Recurring apparent fishing inside a no-take MPA (>=3 events, >=2 days) → HIGH
+- Single apparent-fishing event inside a no-take MPA → MEDIUM
+- Fishing inside an RFMO area without known authorisation → MEDIUM
+- 3+ flag changes in 5 years → MEDIUM
+- Single AIS gap, normal authorisations, no MPA activity → LOW
+- Vessel not in GFW or empty insights → INSUFFICIENT DATA
+
+Return ONLY this format — no extra commentary:
+
+VERDICT: <HIGH RISK | MEDIUM RISK | LOW RISK | INSUFFICIENT DATA>
+KEY EVIDENCE:
+- <cite the specific indicator, event id, MPA name, date range>
+CAVEATS:
+- GFW indicators reflect *apparent* activity inferred from AIS + registries, not legally adjudicated illegal fishing.
+"""
+
+
+def _prefetch_vessel_data(query: str, days_back: int) -> dict:
+    """Fetch vessel identity + insights + events in parallel. Returns structured dict."""
+    end_d = date.today()
+    start_iso = (end_d - timedelta(days=days_back)).isoformat()
+    end_iso = end_d.isoformat()
+
+    try:
+        records = search_vessel(query)
+    except Exception as exc:
+        return {"error": f"GFW vessel search failed: {exc}"}
+    if not records:
+        return {"error": f"No vessels found in GFW for {query!r}"}
+
+    vessel = pick_best_vessel(records, query=query) or records[0]
+
+    fetches: dict = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futs = {
+            pool.submit(get_vessel_insights, vessel.vessel_id, start_iso, end_iso): "insights",
+            pool.submit(get_vessel_events, vessel.vessel_id, "FISHING", start_iso, end_iso): "fishing",
+            pool.submit(get_vessel_events, vessel.vessel_id, "GAP", start_iso, end_iso): "gap",
+        }
+        for fut in as_completed(futs):
+            key = futs[fut]
+            try:
+                fetches[key] = fut.result()
+            except Exception:
+                fetches[key] = {} if key == "insights" else []
+
+    return {
+        "vessel": vessel,
+        "insights": fetches.get("insights", {}),
+        "fishing_events": fetches.get("fishing", []),
+        "gap_events": fetches.get("gap", []),
+        "error": None,
+    }
+
+
+def classify_vessel(query: str, days_back: int = 365) -> str:
+    """Classify IUU risk for one vessel via prefetch + direct gemma3 call (no tool loop)."""
+    data = _prefetch_vessel_data(query, days_back)
+
+    if data.get("error"):
+        return (
+            f"VERDICT: INSUFFICIENT DATA\n"
+            f"KEY EVIDENCE:\n- {data['error']}\n"
+            "CAVEATS:\n- GFW lookup failed; cannot assess risk."
+        )
+
+    vessel: VesselRecord = data["vessel"]
+
+    # Apply fishing-vessel gate in Python — no LLM needed for this check.
+    if not is_fishing_vessel(vessel):
+        return (
+            "VERDICT: NOT A FISHING VESSEL\n"
+            "KEY EVIDENCE:\n"
+            f"- ship_types={vessel.ship_types}, gear_types={vessel.gear_types or '(none)'}"
+            " — vessel is not fishing-capable\n"
+            "CAVEATS:\n- IUU fishing indicators do not apply to non-fishing vessels."
+        )
+
+    prompt = _CLASSIFY_PROMPT.format(
+        vessel=_format_vessel(vessel),
+        insights=_format_insights(data["insights"]),
+        fishing_events=_format_events(data["fishing_events"], "FISHING"),
+        gap_events=_format_events(data["gap_events"], "GAP"),
+        days_back=days_back,
     )
-    result = executor.invoke({"input": question})
-    return result["output"] if isinstance(result, dict) else str(result)
+
+    llm = build_chat_llm("light", model="gemma3:4b")
+    response = llm.invoke(prompt)
+    body = response.content if hasattr(response, "content") else str(response)
+    if isinstance(body, list):
+        body = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in body)
+    return body.strip()
 
 
 def main() -> None:

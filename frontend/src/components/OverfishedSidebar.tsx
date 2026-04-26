@@ -10,6 +10,7 @@ import {
     Crosshair,
 } from "lucide-react";
 import { LiquidGlass } from "./LiquidGlass";
+import { SidebarUserAuth } from "./SidebarUserAuth";
 
 type NavView = "ops" | "overview" | "incidents" | "vessels" | "analytics" | "reports" | "settings";
 
@@ -50,6 +51,8 @@ export function OverfishedSidebar({ activeView, onNavigate, totalVessels, isOnli
                     <NavItem icon={FileText} label="Reports" active={activeView === "reports"} onClick={() => onNavigate("reports")} />
                     <NavItem icon={Settings} label="Settings" active={activeView === "settings"} onClick={() => onNavigate("settings")} />
                 </nav>
+
+                <SidebarUserAuth />
 
                 {/* Live Status Widget */}
                 <div className="space-y-4 pt-6 border-t border-white/10">

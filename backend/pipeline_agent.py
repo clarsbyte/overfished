@@ -22,13 +22,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue as _queue_module
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_anthropic import ChatAnthropic
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 
@@ -44,6 +46,7 @@ from gfw_lookup import (
     search_vessel,
 )
 from regional_agent import evaluate_point
+from services.llm import build_chat_llm, warm_up_models
 from tools.documents import render_combined_legal_pdf
 from tools.schemas import (
     CaseFile,
@@ -581,6 +584,31 @@ def _build_case_file(
     )
 
 
+def _auto_place_call(
+    vessel_name: str,
+    mmsi: str,
+    case_id: str,
+    doc_filename: str,
+) -> None:
+    """Place an AI call after PDF render. Silently skips if env vars are missing."""
+    phone = os.getenv("DEMO_PHONE_NUMBER", "").strip()
+    public_url = os.getenv("PUBLIC_BASE_URL", "").strip()
+    if not phone or not public_url:
+        return
+    try:
+        from comms_lookup import place_ai_call
+        place_ai_call(
+            vessel_name=vessel_name,
+            mmsi=mmsi,
+            case_id=case_id,
+            phone_number=phone,
+            public_base_url=public_url,
+            doc_filename=doc_filename,
+        )
+    except Exception:
+        pass  # call failure must never break the pipeline return value
+
+
 @tool
 def render_evidence_pdf(
     mmsi: str,
@@ -599,8 +627,8 @@ def render_evidence_pdf(
     region_id: str | None = None,
     eez_country: str | None = None,
     case_id: str | None = None,
-    events_json: str | None = None,
-    citations_json: str | None = None,
+    events_json: str | list | None = None,
+    citations_json: str | list | None = None,
     port_name: str | None = None,
     port_country: str | None = None,
     port_locode: str | None = None,
@@ -653,7 +681,7 @@ def render_evidence_pdf(
         )
 
     try:
-        check_status, check_detail = _classify_one_mmsi_fishing(mmsi)
+        _, check_status, check_detail = _classify_one_mmsi_fishing(mmsi)
     except Exception as exc:
         return (
             f"PDF NOT RENDERED: pre-render fishing-vessel check failed for MMSI={mmsi} "
@@ -665,6 +693,12 @@ def render_evidence_pdf(
             f"vessel ({check_detail}). IUU fishing charges do not apply. The pipeline "
             "must skip render and report no prosecutable evidence."
         )
+
+    # LLMs sometimes pass these as JSON arrays directly instead of strings.
+    if isinstance(events_json, list):
+        events_json = json.dumps(events_json)
+    if isinstance(citations_json, list):
+        citations_json = json.dumps(citations_json)
 
     port_dict: dict | None = None
     if port_name:
@@ -959,6 +993,11 @@ HARD RULES:
 - render_evidence_pdf is the LAST tool call. Do not invoke any analysis tool after it.
 - Default to NO RENDER. Rendering a legal PDF is a serious action that names
   an actual vessel for prosecution; it must be backed by cited indicators.
+- CRITICAL: you MUST make an actual tool call to render_evidence_pdf. Do NOT write
+  about calling it, do NOT describe what it would return, do NOT write any text that
+  starts with "EVIDENCE_PDF_RENDERED". That text is the tool's output — it will appear
+  automatically in your context after the tool runs. If you write it yourself the PDF
+  will NOT be created and NO call will be placed.
 
 OUTPUT FORMAT (terse — write only what fits the case, no padding):
 
@@ -977,20 +1016,49 @@ LEGAL CONTEXT:
 - Key rule(s): <instrument> [source_url, last_checked]
 
 LEGAL DOCUMENTS:
-- <If render_evidence_pdf was called: paste its returned EVIDENCE_PDF_RENDERED block.>
-- <If skipped: "NOT RENDERED (insufficient evidence — case is clean)">
+- <paste the exact unmodified output from the render_evidence_pdf tool call here>
+- <if you skipped rendering: "NOT RENDERED (insufficient evidence — case is clean)">
 
 CAVEATS:
 - GFW indicators are apparent activity inferred from AIS; AIS absence may reflect signal loss.
 """
 
 
-def build_supervisor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Copy .env.example to .env and fill it in."
-        )
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=8192)
+class _PipelineProgressCallback(BaseCallbackHandler):
+    """Feeds stage-progress events into a thread-safe queue for SSE streaming."""
+
+    def __init__(self, q: _queue_module.Queue) -> None:
+        super().__init__()
+        self._q = q
+        self._current_tool: str | None = None
+
+    def on_agent_action(self, action, **kwargs) -> None:
+        self._current_tool = action.tool
+        detail: dict | None = None
+        if isinstance(action.tool_input, dict):
+            inp = action.tool_input
+            if "mmsis" in inp:
+                detail = {"mmsis": inp["mmsis"][:15]}
+            elif "mmsi" in inp:
+                detail = {"mmsi": inp["mmsi"]}
+        self._q.put({"stage": action.tool, "status": "running", "detail": detail})
+
+    def on_tool_end(self, output, **kwargs) -> None:
+        if self._current_tool:
+            self._q.put({"stage": self._current_tool, "status": "done"})
+            self._current_tool = None
+
+    def on_tool_error(self, error, **kwargs) -> None:
+        if self._current_tool:
+            self._q.put({"stage": self._current_tool, "status": "error", "detail": str(error)[:200]})
+            self._current_tool = None
+
+    def on_agent_finish(self, finish, **kwargs) -> None:
+        self._q.put({"stage": "synthesis", "status": "complete"})
+
+
+def build_supervisor(model: str | None = None, progress_queue: _queue_module.Queue | None = None) -> AgentExecutor:
+    llm = build_chat_llm("heavy", model=model, num_predict=8192)
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", SYSTEM_PROMPT),
@@ -1009,7 +1077,8 @@ def build_supervisor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         render_evidence_pdf,
     ]
     agent = create_tool_calling_agent(llm, tools, prompt)
-    return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=12)
+    callbacks = [_PipelineProgressCallback(progress_queue)] if progress_queue is not None else []
+    return AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=12, callbacks=callbacks)
 
 
 def _unwrap_output(out) -> str:
@@ -1143,6 +1212,7 @@ def _prefetch_turn1(
     longitude: float,
     radius_miles: float,
     port_country_code: str | None,
+    progress_queue: _queue_module.Queue | None = None,
 ) -> dict[str, str]:
     """Run the independent turn-1 fetches concurrently.
 
@@ -1164,6 +1234,18 @@ def _prefetch_turn1(
         except Exception as exc:
             return f"({label} prefetch failed: {exc!s})"
 
+    def _emit(stage: str, status: str = "done") -> None:
+        if progress_queue is not None:
+            progress_queue.put({"stage": stage, "status": status})
+
+    def _done_cb(stage_name: str):
+        def _cb(fut):
+            if not fut.cancelled():
+                _emit(stage_name)
+        return _cb
+
+    _emit("prefetch", "started")
+
     with ThreadPoolExecutor(max_workers=5) as pool:
         ais_fut = pool.submit(_fetch_ais_once, latitude, longitude, radius_miles)
         sar_fut = pool.submit(
@@ -1183,10 +1265,17 @@ def _prefetch_turn1(
         )
         port_fut = pool.submit(_fetch_nearest_port, latitude, longitude)
 
+        sar_fut.add_done_callback(_done_cb("sar"))
+        law_fut.add_done_callback(_done_cb("regional_laws"))
+        hist_fut.add_done_callback(_done_cb("historical_fishing"))
+        port_fut.add_done_callback(_done_cb("nearest_port"))
+
         try:
             ais_vessels = ais_fut.result()
         except Exception:
             ais_vessels = []
+        _emit("ais")
+
         ais_str = _format_ais_vessels(ais_vessels)
         candidates = _candidates_from_vessels(ais_vessels)
 
@@ -1200,6 +1289,8 @@ def _prefetch_turn1(
                 resolved = {}
         else:
             resolved = {}
+
+        _emit("fishing_filter")
 
         try:
             port = port_fut.result()
@@ -1224,8 +1315,19 @@ def evaluate_incident(
     port_country_code: str | None = None,
     mmsi: str | None = None,
     model_context: dict | None = None,
+    progress_queue: _queue_module.Queue | None = None,
 ) -> str:
-    prefetch = _prefetch_turn1(latitude, longitude, radius_miles, port_country_code)
+    # Kick off model preloads in the background — gemma3 (light, used by the
+    # per-MMSI gfw_agent) and gemma4 (heavy, supervisor + regional). Both
+    # warm in parallel with turn-1 data fetches so first inference doesn't
+    # serialize behind a cold model load.
+    warm_pool = ThreadPoolExecutor(max_workers=1)
+    warm_fut = warm_pool.submit(warm_up_models)
+    try:
+        prefetch = _prefetch_turn1(latitude, longitude, radius_miles, port_country_code, progress_queue)
+    finally:
+        warm_fut.result()  # ensure both models are resident before tool calls
+        warm_pool.shutdown(wait=False)
 
     extras = []
     if port_country_code:
@@ -1266,7 +1368,9 @@ def evaluate_incident(
         "document, and call render_evidence_pdf only if the strict gate criteria "
         "in the system prompt are ALL met."
     )
-    executor = build_supervisor()
+    if progress_queue is not None:
+        progress_queue.put({"stage": "supervisor", "status": "started"})
+    executor = build_supervisor(progress_queue=progress_queue)
     result = executor.invoke({"input": question})
     raw = result["output"] if isinstance(result, dict) else result
     return _unwrap_output(raw)
@@ -1339,6 +1443,7 @@ def evaluate_incident_structured(
     port_country_code: str | None = None,
     mmsi: str | None = None,
     model_context: dict | None = None,
+    progress_queue: _queue_module.Queue | None = None,
 ) -> dict:
     """Same pipeline as evaluate_incident, returned as a structured dict.
 
@@ -1350,15 +1455,132 @@ def evaluate_incident_structured(
         "case_id":  str | None,       # IUU-YYYYMMDD-HHMMSS-XXXX
       }
     """
-    summary = evaluate_incident(
-        latitude,
-        longitude,
-        radius_miles=radius_miles,
-        port_country_code=port_country_code,
-        mmsi=mmsi,
-        model_context=model_context,
-    )
+    pipeline_start = datetime.now(timezone.utc).timestamp()
+    summary = ""
+    try:
+        summary = evaluate_incident(
+            latitude,
+            longitude,
+            radius_miles=radius_miles,
+            port_country_code=port_country_code,
+            mmsi=mmsi,
+            model_context=model_context,
+            progress_queue=progress_queue,
+        )
+    except Exception as exc:
+        summary = f"PIPELINE CRASHED: {exc!s}"
     artifacts = _parse_pipeline_artifacts(summary)
+
+    # Deterministic post-processing: render+call regardless of supervisor's choice
+    # if any vessel verdict is HIGH/MEDIUM. The LLM's discretion is unreliable
+    # (sometimes hallucinates tool calls, sometimes refuses to render valid cases).
+    try:
+        from documents.render import OUTPUT_DIR
+
+        # Step 1: did the supervisor already produce a fresh PDF?
+        new_pdf: Path | None = None
+        new_case_id: str | None = None
+        if OUTPUT_DIR.exists():
+            for case_dir in OUTPUT_DIR.iterdir():
+                if not case_dir.is_dir():
+                    continue
+                candidate = case_dir / "combined_legal_package.pdf"
+                if candidate.exists() and candidate.stat().st_mtime >= pipeline_start:
+                    new_pdf = candidate
+                    new_case_id = case_dir.name
+                    break
+
+        # Step 2: if no PDF, scan the synthesis for prosecutable verdicts and force-render.
+        forced_vessel: tuple[str, str, str] | None = None  # (mmsi, name, flag)
+        if not new_pdf:
+            verdict_re = re.compile(
+                r"MMSI\s+(\d+)\s*\|\s*([^|]+?)\s*\|\s*([A-Z]{3})\s*\|\s*VERDICT:\s*(HIGH|MEDIUM)",
+                re.I,
+            )
+            high = None
+            medium = None
+            for m in verdict_re.finditer(summary):
+                tup = (m.group(1), m.group(2).strip(), m.group(3))
+                if m.group(4).upper() == "HIGH" and not high:
+                    high = tup
+                elif m.group(4).upper() == "MEDIUM" and not medium:
+                    medium = tup
+            forced_vessel = high or medium
+
+            if forced_vessel:
+                fmmsi, fname, fflag = forced_vessel
+                verdict = "HIGH" if forced_vessel is high else "MEDIUM"
+                region_match = re.search(r"INCIDENT:\s*\([^)]+\)\s*[—\-]\s*([^\n]+)", summary)
+                region_name = region_match.group(1).strip() if region_match else "Marine Protected Area"
+                try:
+                    case = _build_case_file(
+                        mmsi=fmmsi,
+                        latitude=latitude,
+                        longitude=longitude,
+                        region_name=region_name,
+                        vessel_name=fname,
+                        vessel_flag=fflag,
+                        eez_country=port_country_code,
+                    )
+                    case.risk = RiskAssessment(
+                        vessel=case.vessel,
+                        region_id=case.region.region_id,
+                        risk_score=0.9 if verdict == "HIGH" else 0.7,
+                        classification="confirmed_iuu" if verdict == "HIGH" else "high_risk",
+                        triggered_rules=[],
+                        evidence=[],
+                        reasoning=(
+                            f"Vessel {fname} (MMSI {fmmsi}, flag {fflag}) classified {verdict} by GFW "
+                            f"vessel-IUU pipeline at ({latitude}, {longitude}) inside {region_name}. "
+                            f"Force-rendered by deterministic post-processor — supervisor synthesis "
+                            f"identified prosecutable verdict but did not invoke render_evidence_pdf."
+                        ),
+                    )
+                    artifact = render_combined_legal_pdf(case)
+                    new_case_id = case.case_id
+                    new_pdf = OUTPUT_DIR / new_case_id / f"{artifact.doc_type}.pdf"
+                except Exception:
+                    new_pdf = None
+                    new_case_id = None
+
+        # Step 3: upload PDF to Supabase Storage.
+        supabase_url: str | None = None
+        if new_pdf and new_case_id:
+            if progress_queue is not None:
+                progress_queue.put({"stage": "supabase_upload", "status": "started"})
+            try:
+                from services.supabase_storage import upload_evidence_pdf
+                supabase_url = upload_evidence_pdf(new_case_id, new_pdf)
+                if progress_queue is not None:
+                    progress_queue.put({"stage": "supabase_upload", "status": "done"})
+            except Exception:
+                pass  # Supabase upload failure must not block the call
+
+        # Step 4: place call if we have a PDF (supervisor's or forced).
+        if new_pdf and new_case_id:
+            call_case_id = artifacts.get("case_id") or new_case_id
+            if forced_vessel:
+                call_vessel = forced_vessel[1]
+                call_mmsi = forced_vessel[0]
+            else:
+                name_match = re.search(r"vessel[_\s]+name[:\s]+([A-Z][A-Z0-9 _-]{2,})", summary, re.I)
+                call_vessel = name_match.group(1).strip() if name_match else "Unknown Vessel"
+                call_mmsi = mmsi or "000000000"
+            _auto_place_call(
+                vessel_name=call_vessel,
+                mmsi=call_mmsi,
+                case_id=call_case_id,
+                doc_filename="combined_legal_package.pdf",
+            )
+            if not artifacts.get("case_id"):
+                artifacts["case_id"] = new_case_id
+                artifacts["pdf_path"] = str(new_pdf)
+                artifacts["risk"] = True
+            if supabase_url:
+                artifacts["supabase_url"] = supabase_url
+    except Exception:
+        pass  # post-processing failure must never break the structured return value
+
     return {"summary": summary, **artifacts}
 
 

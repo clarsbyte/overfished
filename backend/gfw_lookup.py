@@ -43,9 +43,8 @@ class VesselRecord:
     callsign: str | None
     ship_type: str | None
     gear_type: str | None
-    # ML-derived fishing probability (0–1) computed from GFW combined + self-reported
-    # sources at parse time. Threshold >= 0.5 → treat as fishing vessel.
-    neural_vessel_type: float | None = None
+    ship_types: list[str] = field(default_factory=list)
+    gear_types: list[str] = field(default_factory=list)
     owners: list[dict[str, Any]] = field(default_factory=list)
     authorizations: list[dict[str, Any]] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
@@ -68,27 +67,41 @@ def _first(items: Any) -> str | None:
     return None
 
 
-def _fishing_probability(
-    sr_gear: str | None,
-    sr_ship: str | None,
-    cs_gear: str | None,
-    cs_ship: str | None,
-) -> float:
-    """Derive a fishing-vessel probability (0–1) from GFW identity signals.
+def _collect_type_names(entries: list[dict[str, Any]] | Any, key: str) -> list[str]:
+    """Collect unique {name} values from combinedSourcesInfo[].{shiptypes|geartypes}.
 
-    Priority: combined-sources gear > combined-sources shiptype > self-reported
-    gear > self-reported shiptype. Mirrors GFW's own `neural_vessel_type`
-    scoring philosophy (high confidence = clear fishing indicator, low = none).
+    GFW v3 stores classifications as `[{"name": "FISHING", "source": ..., "yearFrom": ...}, ...]`
+    inside each combinedSourcesInfo entry. Walk every entry and dedupe while
+    preserving order so the most-recent / first-seen classification wins.
     """
-    if cs_gear and cs_gear.strip():
-        return 0.92
-    if cs_ship and cs_ship.strip().upper() in _FISHING_SHIP_TYPES:
-        return 0.85
-    if sr_gear and sr_gear.strip():
-        return 0.80
-    if sr_ship and sr_ship.strip().upper() in _FISHING_SHIP_TYPES:
-        return 0.65
-    return 0.1
+    out: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(entries, list):
+        return out
+    for csi in entries:
+        if not isinstance(csi, dict):
+            continue
+        for item in csi.get(key) or []:
+            name = None
+            if isinstance(item, dict):
+                name = item.get("name")
+            elif isinstance(item, str):
+                name = item
+            if not name:
+                continue
+            name = str(name).strip().upper()
+            if name and name not in seen:
+                seen.add(name)
+                out.append(name)
+    return out
+
+
+def _pick_primary_type(names: list[str], fishing_first: bool) -> str | None:
+    if not names:
+        return None
+    if fishing_first and "FISHING" in names:
+        return "FISHING"
+    return names[0]
 
 
 def _parse_vessel(entry: dict[str, Any]) -> VesselRecord:
@@ -96,12 +109,27 @@ def _parse_vessel(entry: dict[str, Any]) -> VesselRecord:
     sr = self_reported[-1] if self_reported else {}
 
     combined = entry.get("combinedSourcesInfo") or []
-    cs = combined[0] if combined else {}
+    ship_types = _collect_type_names(combined, "shiptypes")
+    gear_types = _collect_type_names(combined, "geartypes")
 
-    sr_gear = _first(sr.get("geartypes"))
-    sr_ship = _first(sr.get("shiptypes"))
-    cs_gear = _first(cs.get("geartypes"))
-    cs_ship = _first(cs.get("shiptypes"))
+    # Backward-compat: some endpoints/older payloads embedded the lists directly
+    # in selfReportedInfo entries. Fold those in if present so we never miss a
+    # FISHING tag the website is showing.
+    for sr_entry in self_reported:
+        if not isinstance(sr_entry, dict):
+            continue
+        for raw in sr_entry.get("shiptypes") or []:
+            name = (raw if isinstance(raw, str) else (raw.get("name") if isinstance(raw, dict) else None))
+            if name:
+                n = str(name).strip().upper()
+                if n and n not in ship_types:
+                    ship_types.append(n)
+        for raw in sr_entry.get("geartypes") or []:
+            name = (raw if isinstance(raw, str) else (raw.get("name") if isinstance(raw, dict) else None))
+            if name:
+                n = str(name).strip().upper()
+                if n and n not in gear_types:
+                    gear_types.append(n)
 
     return VesselRecord(
         vessel_id=sr.get("id") or entry.get("vesselId") or entry.get("id") or "",
@@ -110,9 +138,10 @@ def _parse_vessel(entry: dict[str, Any]) -> VesselRecord:
         flag=sr.get("flag"),
         imo=sr.get("imo"),
         callsign=sr.get("callsign"),
-        ship_type=sr_ship,
-        gear_type=sr_gear,
-        neural_vessel_type=_fishing_probability(sr_gear, sr_ship, cs_gear, cs_ship),
+        ship_type=_pick_primary_type(ship_types, fishing_first=True),
+        gear_type=_pick_primary_type(gear_types, fishing_first=False),
+        ship_types=ship_types,
+        gear_types=gear_types,
         owners=entry.get("registryOwners") or [],
         authorizations=entry.get("registryPublicAuthorizations") or [],
         raw=entry,
@@ -161,16 +190,29 @@ def pick_best_vessel(
 
 
 def is_fishing_vessel(record: VesselRecord) -> bool:
-    """True if the vessel's neural_vessel_type score is >= 0.5.
+    """True if the vessel is a fishing vessel per GFW combinedSourcesInfo.
 
-    The score is computed at parse time from GFW combined + self-reported
-    sources (see _fishing_probability). Using a single threshold avoids the
-    inconsistency of ship_type-only checks, which are often missing for small
-    vessels in the GFW registry.
+    Two signals from GFW combinedSourcesInfo (with selfReportedInfo as fallback):
+      - any geartype is set (PURSE_SEINES, TRAWLERS, POTS_AND_TRAPS, ...) — the
+        vessel carries fishing gear, so it is a fishing vessel by construction.
+      - any shiptype is "FISHING" (the broad GFW class).
+
+    Aggregates across ALL combinedSourcesInfo entries — a vessel that registered
+    as FISHING in any identity period counts, matching what the GFW website
+    surfaces as the vessel's "type".
+
+    Carriers, bunkers, support vessels, tankers and cargo ships return False
+    even though they may participate in IUU operations — the IUU classifier
+    pipeline is scoped to *fishing vessels* per the user requirement.
     """
-    if record.neural_vessel_type is None:
-        return False
-    return record.neural_vessel_type >= 0.5
+    if record.gear_types:
+        return True
+    if record.gear_type and str(record.gear_type).strip():
+        return True
+    types = {t.strip().upper() for t in record.ship_types if t}
+    if record.ship_type:
+        types.add(str(record.ship_type).strip().upper())
+    return bool(types & _FISHING_SHIP_TYPES)
 
 
 def search_vessel(query: str, limit: int = 10) -> list[VesselRecord]:

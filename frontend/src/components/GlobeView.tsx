@@ -22,6 +22,17 @@ export interface Seamount {
   note: string;
 }
 
+export interface Port {
+  id: string;
+  name: string;
+  country: string;
+  lat: number;
+  lng: number;
+  type: "fishing" | "commercial" | "transshipment";
+  tier: 1 | 2 | 3;
+  note: string;
+}
+
 interface GlobePoint {
   mmsi: string;
   name?: string;
@@ -83,10 +94,11 @@ interface Props {
   showTunaHeatmap?: boolean;
   showSeamounts?: boolean;
   onSeamountHover?: (seamount: Seamount | null) => void;
+  showPorts?: boolean;
 }
 
 export const GlobeView = forwardRef<GlobeHandle, Props>(function GlobeView(
-  { ships, selected, onSelect, onGlobeClick, pinCoord, isPicking, showSharkHeatmap, showTunaHeatmap, showSeamounts, onSeamountHover },
+  { ships, selected, onSelect, onGlobeClick, pinCoord, isPicking, showSharkHeatmap, showTunaHeatmap, showSeamounts, onSeamountHover, showPorts },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -620,6 +632,110 @@ export const GlobeView = forwardRef<GlobeHandle, Props>(function GlobeView(
       onSeamountHoverRef.current?.(null);
     };
   }, [showSeamounts]);
+
+  // ── Major fishing & commercial ports ────────────────────────────────
+  const portsQ = useQuery({
+    queryKey: ["ports"],
+    queryFn: async () => {
+      const res = await fetch("/ports.json");
+      if (!res.ok) throw new Error("Failed to load ports data");
+      return res.json() as Promise<Port[]>;
+    },
+    enabled: !!showPorts,
+  });
+
+  useEffect(() => {
+    if (!globeRef.current) return;
+    const scene = globeRef.current.scene();
+    const groupName = "ports-overlay";
+
+    const removeExisting = () => {
+      const old = scene.getObjectByName(groupName);
+      if (!old) return;
+      scene.remove(old);
+      old.traverse((obj: THREE.Object3D) => {
+        if (obj instanceof THREE.Mesh) {
+          (obj.geometry as THREE.BufferGeometry).dispose();
+          const m = obj.material as THREE.Material | THREE.Material[];
+          if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
+          else m.dispose();
+        }
+      });
+    };
+
+    removeExisting();
+    if (!showPorts || !portsQ.data?.length) return;
+
+    const GLOBE_R = 100;
+
+    // Same convention as the seamount layer; matches three-globe's polar2Cartesian
+    // so port markers sit on the visible coastline of the rotated earth texture.
+    const polar2Cartesian = (lat: number, lng: number, alt = 0) => {
+      const phi = ((90 - lat) * Math.PI) / 180;
+      const theta = ((90 - lng) * Math.PI) / 180;
+      const r = GLOBE_R * (1 + alt);
+      const sinPhi = Math.sin(phi);
+      return new THREE.Vector3(
+        r * sinPhi * Math.cos(theta),
+        r * Math.cos(phi),
+        r * sinPhi * Math.sin(theta),
+      );
+    };
+
+    const TYPE_COLOR: Record<Port["type"], number> = {
+      fishing: 0xfbbf24,        // amber
+      commercial: 0x38bdf8,     // sky-blue
+      transshipment: 0xf472b6,  // pink — stands out for the IUU/transshipment story
+    };
+
+    const group = new THREE.Group();
+    group.name = groupName;
+
+    for (const p of portsQ.data) {
+      // Lift slightly off the surface so dots aren't hidden by atmosphere/heatmap meshes.
+      const pos = polar2Cartesian(p.lat, p.lng, 0.012);
+      const normal = pos.clone().normalize();
+      const color = new THREE.Color(TYPE_COLOR[p.type] ?? 0xfbbf24);
+
+      // Tier scales the marker radius (1→0.45, 2→0.65, 3→0.95 scene units).
+      const tier = Math.max(1, Math.min(3, p.tier ?? 1));
+      const dotR = 0.30 + tier * 0.18;
+
+      // Solid dot
+      const dotGeom = new THREE.SphereGeometry(dotR, 12, 10);
+      const dotMat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.95,
+      });
+      const dot = new THREE.Mesh(dotGeom, dotMat);
+      dot.position.copy(pos);
+      dot.userData.port = p;
+      dot.name = `port-dot-${p.id}`;
+      group.add(dot);
+
+      // Glow halo (additive ring facing the camera direction along surface normal)
+      const haloGeom = new THREE.RingGeometry(dotR * 1.3, dotR * 2.6, 32);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.18 + tier * 0.07,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const halo = new THREE.Mesh(haloGeom, haloMat);
+      halo.position.copy(pos.clone().add(normal.clone().multiplyScalar(0.05)));
+      halo.lookAt(0, 0, 0);
+      group.add(halo);
+    }
+
+    scene.add(group);
+
+    return () => {
+      removeExisting();
+    };
+  }, [showPorts, portsQ.data]);
 
   useEffect(() => {
     const handleResize = () => {

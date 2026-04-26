@@ -24,10 +24,13 @@ import os
 
 from dotenv import load_dotenv
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 
+from country_lookup import (
+    fetch_country_regulations as _fetch_country_regulations,
+    resolve_country as _resolve_country,
+)
 from regional_lookup import (
     assemble_legal_dossier,
     geospatial_overlay,
@@ -36,10 +39,22 @@ from regional_lookup import (
     identify_coastal_state,
     list_cached_regions,
 )
+from services.legal_vectorstore import query_rules as _query_rag_rules
+from services.llm import build_chat_llm
 
 load_dotenv()
 
 _RAG_ENABLED = os.getenv("RAG_FINETUNE", "FALSE").strip().upper() not in ("FALSE", "0", "")
+
+
+def _rag_enabled() -> bool:
+    """RAG_FINETUNE in .env gates the FAOLEX semantic-search tool.
+
+    FALSE / 0 / unset → curated cache + ProtectedSeas only; the LLM never
+    sees `query_faolex_rag`, so sentence-transformers / InLegalBERT weights
+    are never downloaded.
+    """
+    return os.getenv("RAG_FINETUNE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _dump(obj) -> str:
@@ -101,6 +116,108 @@ def lookup_portlex(country_code: str) -> str:
     })
 
 
+def _format_dossier_for_llm(d: dict) -> str:
+    """Compact text digest the supervisor LLM can actually fit in context.
+
+    The full dossier JSON can run 50-60 KB (10 FAOLEX records × duplicated
+    coastal+port). Past the 8K-token Ollama context, the model drops the
+    original instruction and falls back to "please provide the coordinates."
+    This compresses each record to a one-block digest.
+    """
+    lines: list[str] = []
+    lines.append(f"ASSEMBLED_AT: {d.get('assembled_at')}")
+
+    geo = d.get("geospatial") or {}
+    coord = geo.get("coordinate") or {}
+    ps = geo.get("protectedseas") or {}
+    lines.append(
+        f"COORDINATE: ({coord.get('latitude')}, {coord.get('longitude')})"
+    )
+    if ps.get("matched"):
+        lines.append(
+            f"PROTECTEDSEAS: LFP={ps.get('lfp')} ({ps.get('lfp_interpretation')}) "
+            f"area={ps.get('area_sqkm')} km^2"
+        )
+    else:
+        lines.append("PROTECTEDSEAS: no LFP polygon at this point")
+    lines.append(f"  source: {(ps.get('provenance') or {}).get('source_url')}")
+
+    cs = d.get("coastal_state")
+    if cs is None:
+        lines.append("\nCOASTAL_STATE: high seas — no sovereign EEZ")
+    else:
+        country = cs.get("country") or "?"
+        name = cs.get("name") or country
+        resolution = cs.get("country_resolution") or {}
+        lines.append(f"\nCOASTAL_STATE: {country} ({name})")
+        if resolution:
+            lines.append(
+                f"  resolved via {resolution.get('source')} ({resolution.get('source_url')})"
+            )
+        if cs.get("rules"):
+            lines.append(f"  curated_rules: {len(cs['rules'])} entries")
+        regs = cs.get("regulations_search") or {}
+        recs = regs.get("records") or []
+        if recs:
+            lines.append(
+                f"  faolex: {len(recs)} record(s) "
+                f"(rendered={regs.get('rendered')}, cached={regs.get('cached')}, "
+                f"summarized={regs.get('summarized_count')})"
+            )
+            lines.append(f"  search_url: {regs.get('search_url')}")
+            lines.append("\nFAOLEX_RECORDS:")
+            for r in recs:
+                s = r.get("summary") or {}
+                title = (r.get("title") or "")[:90]
+                lines.append(
+                    f"- {r['id']} ({r.get('year') or '?'}, {r.get('type') or '?'}): {title}"
+                )
+                lines.append(f"    detail: {r.get('detail_url')}")
+                lines.append(
+                    f"    iuu_relevant={s.get('iuu_relevant')} | "
+                    f"foreign_vessels_apply={s.get('foreign_vessels_apply')}"
+                )
+                proh = s.get("prohibitions") or []
+                if proh:
+                    lines.append(f"    prohibitions: {proh[0][:160]}")
+                gear = s.get("gear_restrictions") or []
+                if gear:
+                    lines.append(f"    gear: {gear[0][:160]}")
+                area = s.get("area_restrictions") or []
+                if area:
+                    lines.append(f"    area: {area[0][:160]}")
+                pen = s.get("penalty_summary")
+                if pen:
+                    lines.append(f"    penalty: {pen[:160]}")
+                cite = s.get("citation_quote")
+                if cite:
+                    lines.append(f"    citation: {cite[:200]}")
+        elif regs.get("search_url"):
+            lines.append(f"  faolex: no records — search_url: {regs['search_url']}")
+
+    port = d.get("port_state")
+    if port is None:
+        lines.append("\nPORT_STATE: not supplied")
+    elif port.get("portlex"):
+        lines.append(
+            f"\nPORT_STATE: {port.get('country')} ({port.get('name')}) — curated PORTLEX present"
+        )
+    else:
+        lines.append(
+            f"\nPORT_STATE: {port.get('country')} — no curated PORTLEX; "
+            f"see coastal_state FAOLEX records (same country)"
+            if port.get("regulations_search_ref")
+            else f"\nPORT_STATE: {port.get('country')} — no curated PORTLEX"
+        )
+
+    missing = d.get("missing") or []
+    if missing:
+        lines.append("\nMISSING/CAVEATS:")
+        for m in missing:
+            lines.append(f"- {m}")
+    return "\n".join(lines)
+
+
 @tool
 def assemble_dossier(
     latitude: float,
@@ -109,15 +226,19 @@ def assemble_dossier(
 ) -> str:
     """Run the full pipeline: geospatial overlay + coastal-state legal layer + (optional) port state.
 
-    Returns a single JSON document with: ProtectedSeas LFP, coastal-state
-    FISHLEX / FAOLEX, optional PORTLEX, an `assembled_at` timestamp, and a
-    `missing` array listing any layers that returned no match. This is the
-    fastest path to a complete answer; the other tools are for follow-ups.
+    Returns a compact TEXT digest (not JSON) tuned to fit a small-model
+    context window: the geospatial result, the resolved coastal state with
+    its FAOLEX records (id, year, type, title, IUU relevance, foreign-vessel
+    applicability, key prohibition, gear/area/penalty signals, and a
+    quotable citation per record), and the port-state block. The full JSON
+    structure remains available via assemble_legal_dossier for downstream
+    JSON consumers — this tool is the LLM-readable view.
     """
     try:
-        return _dump(assemble_legal_dossier(latitude, longitude, port_country_code))
+        d = assemble_legal_dossier(latitude, longitude, port_country_code)
     except Exception as exc:
         return f"Dossier assembly failed: {exc!s}"
+    return _format_dossier_for_llm(d)
 
 
 @tool
@@ -135,41 +256,81 @@ def list_known_regions() -> str:
     return _dump(list_cached_regions())
 
 
-if _RAG_ENABLED:
-    from services.legal_vectorstore import query_rules as _query_rag_rules
+@tool
+def resolve_country_from_coord(latitude: float, longitude: float) -> str:
+    """STEP 1 — Resolve a coordinate to its sovereign country (live).
 
-    @tool
-    def query_faolex_rag(query: str, country_code: str | None = None, top_k: int = 5) -> str:
-        """Semantic search over FAOLEX rules extracted by a fine-tuned legal NER model.
+    Use BEFORE fetch_country_faolex when assemble_dossier returned
+    coastal_state=null (the coordinate is outside the curated bbox cache).
+    Two-stage backend:
+      - OSM Nominatim reverse-geocode for coastal/inland points.
+      - Marine Regions WFS EEZ for offshore points outside Nominatim.
+    Returns ISO3 + sovereign name + provenance, or a "high seas" note
+    when neither backend places the point inside a sovereign claim.
+    """
+    out = _resolve_country(latitude, longitude)
+    if out is None:
+        return _dump({
+            "matched": False,
+            "reason": "high seas — neither Nominatim nor Marine Regions EEZ placed this point inside a sovereign claim. Only flag-state and RFMO rules apply.",
+            "coordinate": {"latitude": latitude, "longitude": longitude},
+        })
+    return _dump(out)
 
-        Use this when:
-          - The curated coastal-state dossier returned no match (e.g., for CHN/IDN
-            which aren't in the curated cache).
-          - The curated rules don't speak to the specific gear, species, or
-            penalty at hand and you need broader recall.
 
-        Args:
-          query: a free-text description of the situation. Include vessel gear,
-            target species, and any zone hints. Example:
-            "purse seine for bluefin tuna inside a no-take zone".
-          country_code: ISO3 filter (ECU, PHL, ESP, CHN, IDN). Optional but
-            strongly recommended — cross-jurisdiction noise otherwise.
-          top_k: number of hits to return (default 5).
+@tool
+def fetch_country_faolex(country_code: str, subject: str = "Fisheries") -> str:
+    """STEP 2 — Fetch the regulatory dossier for an ISO3 country (live).
 
-        Returns: JSON list of rule payloads. Each carries `confidence: "silver"`,
-        `source_sentence`, `source_doc` (LEX-FAOC id), `source_url`, and any
-        extracted species/gear/zone/prohibition/penalty_usd fields. Cite by
-        quoting `source_sentence` and the source_doc — and tag the citation as
-        `confidence: silver` so the verdict stays calibrated.
+    Layered lookup, returned uniformly:
+      curated   — backend/data/regional_rules.json (FISHLEX/PORTLEX/FAOLEX
+                  with structured rules) — when available, this is the
+                  primary citation source.
+      seeded    — finetune/data/seeds/<iso3>.json — pre-discovered LEX-FAOC
+                  IDs from offline FAOLEX runs.
+      live      — FAOLEX country/Fisheries search URL, always returned as a
+                  citation reference even when the curated/seeded layers
+                  miss. FAOLEX is JS-rendered so the URL is the honest
+                  citation; do not invent record IDs that aren't in the
+                  returned `seeded_record_ids` or scraped `ids` lists.
+    Pass the ISO3 returned by resolve_country_from_coord. `subject` defaults
+    to "Fisheries"; pass "Marine resources" or "Wild fauna" for broader hits.
+    """
+    return _dump(_fetch_country_regulations(country_code, subject=subject))
 
-        Returns an `error` payload if the RAG backend isn't installed on this
-        host (graceful degradation).
-        """
-        try:
-            hits = _query_rag_rules(query=query, country=country_code, top_k=top_k)
-        except Exception as exc:
-            return _dump({"error": f"query_faolex_rag failed: {exc!s}"})
-        return _dump(hits)
+
+@tool
+def query_faolex_rag(query: str, country_code: str | None = None, top_k: int = 5) -> str:
+    """Semantic search over FAOLEX rules extracted by a fine-tuned legal NER model.
+
+    Use this when:
+      - The curated coastal-state dossier returned no match (e.g., for CHN/IDN
+        which aren't in the curated cache).
+      - The curated rules don't speak to the specific gear, species, or
+        penalty at hand and you need broader recall.
+
+    Args:
+      query: a free-text description of the situation. Include vessel gear,
+        target species, and any zone hints. Example:
+        "purse seine for bluefin tuna inside a no-take zone".
+      country_code: ISO3 filter (ECU, PHL, ESP, CHN, IDN). Optional but
+        strongly recommended — cross-jurisdiction noise otherwise.
+      top_k: number of hits to return (default 5).
+
+    Returns: JSON list of rule payloads. Each carries `confidence: "silver"`,
+    `source_sentence`, `source_doc` (LEX-FAOC id), `source_url`, and any
+    extracted species/gear/zone/prohibition/penalty_usd fields. Cite by
+    quoting `source_sentence` and the source_doc — and tag the citation as
+    `confidence: silver` so the verdict stays calibrated.
+
+    Returns an `error` payload if the RAG backend isn't installed on this
+    host (graceful degradation).
+    """
+    try:
+        hits = _query_rag_rules(query=query, country=country_code, top_k=top_k)
+    except Exception as exc:
+        return _dump({"error": f"query_faolex_rag failed: {exc!s}"})
+    return _dump(hits)
 
 
 _SYSTEM_PROMPT_NO_RAG = """You are a fisheries legal-research assistant. Your job: given a
@@ -247,19 +408,32 @@ You draw on a source-prioritized pipeline:
       ESP, CHN, IDN. Lower precision than the curated cache; treat as
       supplementary evidence, not primary law.
 
-Pipeline:
-1. Call `assemble_dossier(latitude, longitude, port_country_code=...)`. This runs
-   the geospatial + coastal-state + (optional) port-state queries in one shot.
-2. If the dossier's `missing` array flags gaps you care about, follow up with the
-   single-purpose tools (`lookup_protectedseas_lfp`, `lookup_coastal_state`,
-   `lookup_portlex`).
-2b. If the curated dossier doesn't speak to the specific gear/species/penalty,
-   OR the coastal-state lookup missed but the country is in the indexed set
-   (ECU/PHL/ESP/CHN/IDN), call `query_faolex_rag(query=<vessel context>,
-   country_code=<iso3>)`. Quote returned `source_sentence`s and tag those
-   citations explicitly as `confidence: silver`. When a curated rule and a
-   silver rule speak to the same point, prefer the curated rule.
-3. Produce the verdict in this exact format:
+Pipeline (follow this order — STEP BY STEP):
+1. Call `assemble_dossier(latitude, longitude, port_country_code=...)`. This already
+   chains the geospatial overlay → coastal-state cache lookup → live country resolve
+   → FAOLEX search-URL probe → port-state lookup. Read its `missing` array first.
+
+2. If `assemble_dossier` returned `coastal_state` with `country_resolution.source`
+   set to "nominatim" or starting with "marine_regions:", the country WAS
+   resolved live — the ISO3 is in `coastal_state.country` and a FAOLEX search
+   URL is in `coastal_state.regulations_search.search_url`. Cite that URL as
+   your primary FAOLEX reference; do NOT invent record IDs.
+
+3. If `coastal_state` is null (high seas), the point is outside every sovereign
+   EEZ. Only flag-state and RFMO rules apply. Set verdict=INSUFFICIENT_DATA
+   and recommend operator consult the relevant RFMO.
+
+4. STEPWISE FALLBACK if step 1 didn't run / partially failed:
+   a. Call `resolve_country_from_coord(lat, lon)` to get ISO3 + sovereign.
+   b. Call `fetch_country_faolex(country_code=<iso3>)` to get the dossier
+      for that country. Cite the `provenance.search_url` it returns.
+
+5. If the curated dossier doesn't speak to a specific gear/species/penalty,
+   AND `query_faolex_rag` is registered (RAG_FINETUNE=TRUE), call it with
+   the vessel context. Otherwise rely on the curated rules and the FAOLEX
+   search URL.
+
+6. Produce the verdict in this exact format:
 
 VERDICT: <ALLOWED | PERMIT_REQUIRED | PROHIBITED | HIGH_RISK | INSUFFICIENT_DATA>
 COORDINATE: (<lat>, <lon>)
@@ -302,12 +476,8 @@ Hard rules:
 SYSTEM_PROMPT = _SYSTEM_PROMPT_RAG if _RAG_ENABLED else _SYSTEM_PROMPT_NO_RAG
 
 
-def build_agent_executor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Copy .env.example to .env and fill it in."
-        )
-    llm = ChatAnthropic(model=model, temperature=0)
+def build_agent_executor(model: str | None = None) -> AgentExecutor:
+    llm = build_chat_llm("heavy", model=model)
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", SYSTEM_PROMPT),
@@ -320,10 +490,12 @@ def build_agent_executor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         lookup_protectedseas_lfp,
         lookup_coastal_state,
         lookup_portlex,
+        resolve_country_from_coord,
+        fetch_country_faolex,
         get_region_full,
         list_known_regions,
     ]
-    if _RAG_ENABLED:
+    if _rag_enabled():
         tools.append(query_faolex_rag)
     agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True)

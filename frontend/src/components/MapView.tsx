@@ -21,6 +21,7 @@ interface Props {
   selected: Ship | null;
   onSelect: (ship: Ship | null) => void;
   speciesOverlay?: FeatureCollection<Geometry, GeoJsonProperties> | null;
+  showPlastic?: boolean;
   onGlobeClick?: (lat: number, lng: number) => void;
   pinCoord?: { lat: number; lng: number } | null;
   isPicking?: boolean;
@@ -28,10 +29,27 @@ interface Props {
   showTunaHeatmap?: boolean;
   showSeamounts?: boolean;
   onSeamountHover?: (seamount: Seamount | null) => void;
+  showPorts?: boolean;
 }
 
 export const MapView = forwardRef<MapHandle, Props>(function MapView(
-  { renderer, ships, tracks, selected, onSelect, speciesOverlay, onGlobeClick, pinCoord, isPicking, showSharkHeatmap, showTunaHeatmap, showSeamounts, onSeamountHover },
+  {
+    renderer,
+    ships,
+    tracks,
+    selected,
+    onSelect,
+    speciesOverlay,
+    showPlastic,
+    onGlobeClick,
+    pinCoord,
+    isPicking,
+    showSharkHeatmap,
+    showTunaHeatmap,
+    showSeamounts,
+    onSeamountHover,
+    showPorts,
+  },
   ref,
 ) {
   const mapboxRef = useRef<MapboxHandle | null>(null);
@@ -61,6 +79,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
         showTunaHeatmap={showTunaHeatmap}
         showSeamounts={showSeamounts}
         onSeamountHover={onSeamountHover}
+        showPorts={showPorts}
       />
     );
   }
@@ -73,6 +92,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
       selected={selected}
       onSelect={onSelect}
       speciesOverlay={speciesOverlay}
+      showPlastic={showPlastic}
     />
   );
 });
