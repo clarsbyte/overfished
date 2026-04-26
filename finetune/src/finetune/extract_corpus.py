@@ -32,43 +32,92 @@ ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = ROOT / "data" / "extracted_rules.jsonl"
 
-# Lexicons cover the fisheries-law vocabulary the user's demo countries care
-# about. These are intentionally short — false positives are cheaper than
-# false negatives at the demo stage; the NER mode will fix recall.
 SPECIES = {
+    # Tunas & billfish
     "tuna", "yellowfin", "bigeye", "skipjack", "bluefin", "albacore",
-    "shark", "hammerhead", "ray", "manta",
-    "swordfish", "marlin", "sailfish",
-    "sardine", "anchovy", "mackerel", "herring",
-    "cod", "haddock", "pollock",
+    "swordfish", "marlin", "sailfish", "spearfish",
+    # Sharks & rays
+    "shark", "hammerhead", "ray", "manta", "skate", "sawfish",
+    # Small pelagics
+    "sardine", "anchovy", "mackerel", "herring", "sprat", "pilchard", "whitebait",
+    # Groundfish
+    "cod", "haddock", "pollock", "hake", "halibut", "flatfish", "sole", "turbot",
+    "rockfish", "sea bass", "sea bream", "snapper", "grouper",
+    # Cephalopods
     "octopus", "squid", "cuttlefish",
-    "lobster", "crab", "shrimp", "prawn",
-    "grouper", "snapper", "rockfish",
-    "salmon", "trout",
-    "sea cucumber", "abalone", "scallop",
-    "eel", "hake",
+    # Crustaceans
+    "lobster", "crab", "shrimp", "prawn", "krill",
+    # Shellfish
+    "scallop", "abalone", "mussel", "oyster", "clam", "cockle",
+    # Other
+    "sea cucumber", "eel", "salmon", "trout", "trevally", "wahoo",
+    "mahi", "amberjack", "barramundi", "milkfish", "tilapia", "catfish",
+    # Protected megafauna commonly cited in fishing regs
+    "sea turtle", "turtle", "whale", "dolphin", "dugong", "porpoise",
+    # Generic
+    "fish", "seafood", "marine species", "aquatic species",
 }
 GEAR = {
-    "trawl", "trawler", "trawling",
-    "longline", "long-line", "long line",
-    "gillnet", "gill net", "drift net", "driftnet",
-    "purse seine", "seine net", "seiner",
-    "dredge", "dredging",
+    # Trawls
+    "trawl", "trawler", "trawling", "bottom trawl", "midwater trawl", "beam trawl",
+    # Lines
+    "longline", "long-line", "long line", "hook and line", "pole and line",
+    # Nets
+    "gillnet", "gill net", "drift net", "driftnet", "cast net", "throw net",
+    "purse seine", "seine net", "seiner", "surround net",
+    "fyke net", "pound net", "set net", "trammel net",
+    # Traps & pots
+    "trap", "pot", "fish trap", "crab pot",
+    # Other gear
+    "dredge", "dredging", "harpoon", "spear", "speargun",
     "fad", "fish aggregating device",
-    "harpoon",
-    "trap", "pot",
-    "hook and line",
-    "bottom trawl", "midwater trawl",
-    "pole and line",
+    # Prohibited methods
+    "explosives", "dynamite", "poison", "cyanide", "electric",
+    # Generic
+    "fishing gear", "fishing equipment", "fishing net", "net",
+    "aquaculture", "fish farm",
 }
 ZONE = {
+    # Jurisdictional zones
     "eez", "exclusive economic zone",
     "territorial sea", "territorial waters",
+    "contiguous zone", "continental shelf",
+    "high seas", "international waters",
+    # Protected areas
     "marine reserve", "marine protected area", "mpa",
-    "no-take", "no take zone",
-    "marine sanctuary",
-    "high seas",
-    "coastal zone",
+    "marine sanctuary", "marine park",
+    "no-take", "no take zone", "no-take zone",
+    "fish refuge", "fish sanctuary",
+    # Coastal / management zones
+    "coastal zone", "coastal waters", "inshore", "offshore",
+    "spawning ground", "nursery area", "critical habitat",
+    # Closures
+    "closed area", "closure area", "restricted area",
+    "fishing zone", "management zone",
+}
+# General fisheries activity terms — used as a third subject category so that
+# sentences about "fishing vessels" or "catch limits" without specific species
+# names still qualify.
+FISHING_GENERAL = {
+    "fishing", "fishery", "fisheries", "fisher", "fisherman", "fishermen",
+    "vessel", "fishing vessel", "fishing boat", "fishing craft", "fishing fleet",
+    "catch", "bycatch", "by-catch", "incidental catch", "discards",
+    "quota", "catch limit", "total allowable catch", "tac",
+    "harvest", "harvesting",
+    "landing", "landings", "landed catch",
+    "bag limit", "size limit", "minimum size", "minimum length",
+    "closed season", "open season", "spawning season", "fishing season",
+    "marine resource", "aquatic resource", "fish stock", "fishery resource",
+    "iuu", "illegal fishing", "unreported fishing", "unregulated fishing",
+}
+# Season / temporal closure terms — a sentence mentioning one of these + any
+# rule signal qualifies even without a species or gear name.
+SEASON_CLOSURE = {
+    "closed season", "close season", "open season",
+    "spawning season", "spawning period", "breeding season",
+    "fishing ban", "fishing moratorium", "temporary ban",
+    "closed area", "closure", "fishing closure",
+    "seasonal restriction", "seasonal prohibition",
 }
 LICENSE_HINTS = {
     "license required", "licence required",
@@ -77,8 +126,15 @@ LICENSE_HINTS = {
     "subject to license", "subject to permit",
     "shall hold a license", "shall hold a permit",
     "with prior authorization", "with prior authorisation",
+    # Expanded
+    "shall obtain a license", "shall obtain a permit",
+    "must hold a license", "must hold a permit",
+    "fishing license", "fishing licence", "fishing permit",
+    "vessel registration", "vessel license", "vessel licence",
+    "import permit", "export permit",
 }
 PROHIBITION_PHRASES = [
+    # Original
     re.compile(r"\bshall not\b", re.IGNORECASE),
     re.compile(r"\bis prohibited\b", re.IGNORECASE),
     re.compile(r"\bare prohibited\b", re.IGNORECASE),
@@ -87,6 +143,48 @@ PROHIBITION_PHRASES = [
     re.compile(r"\bnot permitted\b", re.IGNORECASE),
     re.compile(r"\bunlawful\b", re.IGNORECASE),
     re.compile(r"\bno person shall\b", re.IGNORECASE),
+    # Expanded prohibitions
+    re.compile(r"\bmay not\b", re.IGNORECASE),
+    re.compile(r"\bmust not\b", re.IGNORECASE),
+    re.compile(r"\bno fishing\b", re.IGNORECASE),
+    re.compile(r"\bprohibit\w*\b", re.IGNORECASE),
+    re.compile(r"\brestrict\w*\b", re.IGNORECASE),
+    re.compile(r"\bclosed to\b", re.IGNORECASE),
+    re.compile(r"\bno person\b", re.IGNORECASE),
+    re.compile(r"\bit is an offence\b", re.IGNORECASE),
+    re.compile(r"\bconstitutes an offence\b", re.IGNORECASE),
+    re.compile(r"\boffence\b", re.IGNORECASE),
+    re.compile(r"\bviolation\b", re.IGNORECASE),
+    re.compile(r"\binfringement\b", re.IGNORECASE),
+    # Penalties / enforcement
+    re.compile(r"\bshall be liable\b", re.IGNORECASE),
+    re.compile(r"\bimprisonment\b", re.IGNORECASE),
+    re.compile(r"\bimprisoned\b", re.IGNORECASE),
+    re.compile(r"\bfine of\b", re.IGNORECASE),
+    re.compile(r"\bpenalt\w*\b", re.IGNORECASE),
+    re.compile(r"\bforfeiture\b", re.IGNORECASE),
+    re.compile(r"\bconfiscat\w*\b", re.IGNORECASE),
+    re.compile(r"\bseizure\b", re.IGNORECASE),
+    # Obligations / conditions
+    re.compile(r"\bshall obtain\b", re.IGNORECASE),
+    re.compile(r"\bshall ensure\b", re.IGNORECASE),
+    re.compile(r"\bshall report\b", re.IGNORECASE),
+    re.compile(r"\bshall carry\b", re.IGNORECASE),
+    re.compile(r"\bshall comply\b", re.IGNORECASE),
+    re.compile(r"\bmust comply\b", re.IGNORECASE),
+    re.compile(r"\bsubject to\b", re.IGNORECASE),
+    re.compile(r"\brequired to\b", re.IGNORECASE),
+    re.compile(r"\bobligat\w*\b", re.IGNORECASE),
+    # Season / quota signals
+    re.compile(r"\bduring the closed season\b", re.IGNORECASE),
+    re.compile(r"\bduring the period\b", re.IGNORECASE),
+    re.compile(r"\bexceed\w*\b.*\bquota\b", re.IGNORECASE),
+    re.compile(r"\bquota\b.*\bexceed\w*\b", re.IGNORECASE),
+    re.compile(r"\bcatch limit\b", re.IGNORECASE),
+    re.compile(r"\btotal allowable catch\b", re.IGNORECASE),
+    re.compile(r"\bminimum size\b", re.IGNORECASE),
+    re.compile(r"\bminimum length\b", re.IGNORECASE),
+    re.compile(r"\bsize limit\b", re.IGNORECASE),
 ]
 # $50,000 / USD 1,200,000 / 10,000 dollars / EUR 5,000
 PENALTY_RE = re.compile(
@@ -153,21 +251,43 @@ def _find_license(sentence: str) -> str | None:
 def extract_rules_stub(
     text: str, *, country: str, source_doc: str, source_url: str
 ) -> list[dict]:
-    """Filter sentences with both a subject (species/gear) AND a rule signal."""
+    """Filter sentences that contain a fisheries subject AND a rule signal.
+
+    Three paths to qualify:
+      1. (species OR gear) AND (prohibition OR penalty OR license)  — original
+      2. general fishing term AND (prohibition OR penalty OR license)  — broader
+      3. (zone OR season/closure term) AND (prohibition OR penalty OR license)
+    """
     rules: list[dict] = []
     today = date.today().isoformat()
     for sentence in _split_sentences(text):
         species = _find_lexicon_matches(sentence, SPECIES)
         gear = _find_lexicon_matches(sentence, GEAR)
         zone = _find_lexicon_matches(sentence, ZONE)
+        general = _find_lexicon_matches(sentence, FISHING_GENERAL)
+        season = _find_lexicon_matches(sentence, SEASON_CLOSURE)
         prohibition = _has_phrase(sentence, PROHIBITION_PHRASES)
         penalty_usd = _parse_penalty_usd(sentence)
         license_hint = _find_license(sentence)
 
-        has_subject = bool(species or gear)
         has_rule = bool(prohibition or penalty_usd or license_hint)
-        if not (has_subject and has_rule):
+        if not has_rule:
             continue
+
+        has_specific_subject = bool(species or gear)
+        has_general_subject = bool(general)
+        has_zone_or_season = bool(zone or season)
+
+        if not (has_specific_subject or has_general_subject or has_zone_or_season):
+            continue
+
+        # Assign confidence based on how specific the match is.
+        if has_specific_subject:
+            confidence = "silver"
+        elif has_zone_or_season:
+            confidence = "silver"
+        else:
+            confidence = "bronze"  # general fishing term only
 
         rules.append({
             "country": country.upper(),
@@ -180,7 +300,7 @@ def extract_rules_stub(
             "prohibition": prohibition or "",
             "penalty_usd": penalty_usd,
             "license": license_hint or "",
-            "confidence": "silver",
+            "confidence": confidence,
             "extracted_at": today,
         })
     return rules

@@ -16,6 +16,7 @@ export interface GlobeControlsState {
     // ─ Legacy globe overlays
     showHeatmap: boolean;
     showPoints: boolean;
+    showSharkHeatmap: boolean;
 }
 
 const DEFAULT_STATE: GlobeControlsState = {
@@ -32,13 +33,14 @@ const DEFAULT_STATE: GlobeControlsState = {
     tiltMode: "Perpendicular",
     showHeatmap: true,
     showPoints: false,
+    showSharkHeatmap: false,
 };
 
 interface GlobeControlsContextType {
     controls: GlobeControlsState;
     setControl: <K extends keyof GlobeControlsState>(key: K, value: GlobeControlsState[K]) => void;
     isUpdatingLayers: boolean;
-    toggleLayer: (layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints") => void;
+    toggleLayer: (layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints" | "showSharkHeatmap") => void;
 }
 
 const GlobeControlsContext = createContext<GlobeControlsContextType | null>(null);
@@ -51,7 +53,7 @@ export function GlobeControlsProvider({ children }: { children: ReactNode }) {
         setControls((prev) => ({ ...prev, [key]: value }));
     }, []);
 
-    const toggleLayer = useCallback((layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints") => {
+    const toggleLayer = useCallback((layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints" | "showSharkHeatmap") => {
         // Show spinner immediately
         setIsUpdatingLayers(true);
 
