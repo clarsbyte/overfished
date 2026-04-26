@@ -1,0 +1,6 @@
+train: /kaggle/input/ships-in-aerial-images/ships-aerial-images/train/images
+val: /kaggle/input/ships-in-aerial-images/ships-aerial-images/valid/images
+test: /kaggle/input/ships-in-aerial-images/ships-aerial-images/test/images
+
+nc: 1
+names: ['ship']
