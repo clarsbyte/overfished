@@ -1,5 +1,5 @@
 /**
- * AquaWatch wordmark + sub-title. Small wave glyph in cyan.
+ * Overfished wordmark + sub-title. Small wave glyph in cyan.
  */
 export function Logo() {
   return (
@@ -23,7 +23,7 @@ export function Logo() {
       </div>
       <div className="leading-tight">
         <div className="text-[15px] font-semibold tracking-tight text-white font-display">
-          AquaWatch
+          Overfished
         </div>
         <div className="text-[10px] tracking-[0.12em] text-slate-400/80">
           Illegal Fishing Intelligence

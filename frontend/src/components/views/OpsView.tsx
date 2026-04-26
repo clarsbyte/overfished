@@ -78,6 +78,19 @@ interface Props {
   onSpeciesHighlightChange?: (geojson: FeatureCollection | null) => void;
 }
 
+const SOURCE_META: Record<string, { label: string; short: string; color: string }> = {
+  "backend-galapagos": { label: "Galápagos",    short: "GAL", color: "text-cyan-400 bg-cyan-500/15 border-cyan-500/30" },
+  "backend-global":    { label: "Global AIS",   short: "AIS", color: "text-violet-400 bg-violet-500/15 border-violet-500/30" },
+  "sar-detections":    { label: "SAR Detect.",  short: "SAR", color: "text-amber-400 bg-amber-500/15 border-amber-500/30" },
+  "sar-enriched":      { label: "SAR Enriched", short: "ENR", color: "text-emerald-400 bg-emerald-500/15 border-emerald-500/30" },
+};
+
+// Map bySource keys to SourceVessel.source for filtering
+const SOURCE_TO_VESSEL: Record<string, SourceVessel["source"]> = {
+  "backend-galapagos": "galapagos",
+  "backend-global":    "global",
+};
+
 export function OpsView({
   selectedVessel,
   documents,
@@ -92,11 +105,13 @@ export function OpsView({
   demoRunning,
   demoError,
   lastPortCall,
+  bySource,
   selectedShip,
   onSpeciesHighlightChange,
 }: Props) {
   const [query, setQuery] = useState("");
   const [highRiskOnly, setHighRiskOnly] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<OpsTab>("intel");
   const [approaches, setApproaches] = useState(1);
   const [seqLen, setSeqLen] = useState(3);
@@ -141,14 +156,21 @@ export function OpsView({
 
   const filteredVessels = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const vesselSource = sourceFilter ? SOURCE_TO_VESSEL[sourceFilter] : null;
     return allVessels
       .filter((v) => {
+        if (vesselSource && v.source !== vesselSource) return false;
         if (highRiskOnly && v.risk !== "confirmed_iuu" && v.risk !== "high_risk") return false;
         if (!q) return true;
         return v.name.toLowerCase().includes(q) || v.mmsi.includes(q) || v.flag.toLowerCase().includes(q);
       })
       .sort((a, b) => rankRisk(b.risk) - rankRisk(a.risk));
-  }, [allVessels, highRiskOnly, query]);
+  }, [allVessels, highRiskOnly, query, sourceFilter]);
+
+  const totalBySource = useMemo(() => {
+    const total = Object.values(bySource ?? {}).reduce((s, n) => s + n, 0) || 1;
+    return Object.entries(bySource ?? {}).map(([key, count]) => ({ key, count, pct: count / total }));
+  }, [bySource]);
 
   const galCount = vesselsQ.data?.length ?? 0;
   const globalCount = globalTracksQ.data?.length ?? 0;
@@ -233,6 +255,61 @@ export function OpsView({
                   High-risk
                 </label>
               </div>
+
+              {/* Source overview: stacked bar + filter chips */}
+              {totalBySource.length > 0 && (
+                <div className="space-y-2">
+                  {/* Proportional bar */}
+                  <div className="flex h-1.5 rounded-full overflow-hidden gap-px">
+                    {totalBySource.map(({ key, pct }) => {
+                      const meta = SOURCE_META[key];
+                      const barColor = key === "backend-galapagos" ? "bg-cyan-500"
+                        : key === "backend-global" ? "bg-violet-500"
+                        : key === "sar-detections" ? "bg-amber-500"
+                        : "bg-emerald-500";
+                      return (
+                        <div
+                          key={key}
+                          title={`${meta?.label ?? key}: ${Math.round(pct * 100)}%`}
+                          style={{ width: `${pct * 100}%` }}
+                          className={`${barColor} opacity-70 transition-all`}
+                        />
+                      );
+                    })}
+                  </div>
+                  {/* Filter chips */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => setSourceFilter(null)}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-colors ${
+                        sourceFilter === null
+                          ? "text-slate-100 bg-white/15 border-white/25"
+                          : "text-slate-400 bg-transparent border-white/10 hover:border-white/20"
+                      }`}
+                    >
+                      All
+                      <span className="font-mono opacity-70">{allVessels.length}</span>
+                    </button>
+                    {totalBySource.map(({ key, count }) => {
+                      const meta = SOURCE_META[key] ?? { label: key, short: key.toUpperCase(), color: "text-slate-400 bg-white/10 border-white/20" };
+                      const active = sourceFilter === key;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setSourceFilter(active ? null : key)}
+                          className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-colors ${
+                            active ? meta.color : "text-slate-400 bg-transparent border-white/10 hover:border-white/20 hover:text-slate-200"
+                          }`}
+                        >
+                          {meta.label}
+                          <span className="font-mono opacity-70">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
                 <input
@@ -272,7 +349,13 @@ export function OpsView({
                           <h4 className="text-[13px] font-semibold text-slate-100 truncate">{v.name}</h4>
                           <span className="text-[10px] text-slate-500 flex-shrink-0">{v.flag || "UNK"}</span>
                         </div>
-                        <p className="text-[11px] text-slate-500 truncate">MMSI {v.mmsi} · {RISK_LABEL[v.risk]}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          MMSI {v.mmsi} · {RISK_LABEL[v.risk]}
+                          {" · "}
+                          <span className={`text-[10px] font-semibold ${v.source === "galapagos" ? "text-cyan-500/70" : "text-violet-500/70"}`}>
+                            {v.source === "galapagos" ? "GAL" : "AIS"}
+                          </span>
+                        </p>
                       </div>
                     </button>
                   );

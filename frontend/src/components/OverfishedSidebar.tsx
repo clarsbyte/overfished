@@ -20,7 +20,7 @@ interface SidebarProps {
     isOnline?: boolean;
 }
 
-export function AquaWatchSidebar({ activeView, onNavigate, totalVessels, isOnline = true }: SidebarProps) {
+export function OverfishedSidebar({ activeView, onNavigate, totalVessels, isOnline = true }: SidebarProps) {
     return (
         <LiquidGlass
             className="rounded-[40px] h-full"
@@ -34,7 +34,7 @@ export function AquaWatchSidebar({ activeView, onNavigate, totalVessels, isOnlin
                         <Waves className="w-6 h-6 text-cyan-400" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold tracking-tight text-white">AquaWatch</h1>
+                        <h1 className="text-xl font-bold tracking-tight text-white">Overfished</h1>
                         <p className="text-[10px] text-cyan-500/80 font-bold uppercase tracking-widest">Illegal Fishing Intelligence</p>
                     </div>
                 </div>
@@ -67,7 +67,7 @@ export function AquaWatchSidebar({ activeView, onNavigate, totalVessels, isOnlin
                             <div className={`w-2 h-2 rounded-full ${isOnline
                                 ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
                                 : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-                            }`} />
+                                }`} />
                             <span className={`text-[10px] font-bold uppercase tracking-widest ${isOnline ? "text-emerald-500" : "text-red-500"}`}>
                                 {isOnline ? "Online" : "Offline"}
                             </span>
@@ -89,9 +89,8 @@ function NavItem({ icon: Icon, label, active = false, onClick }: {
         <button
             type="button"
             onClick={onClick}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer group text-left ${
-                active ? "bg-cyan-500/15 border border-cyan-500/25" : "hover:bg-white/5 border border-transparent"
-            }`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer group text-left ${active ? "bg-cyan-500/15 border border-cyan-500/25" : "hover:bg-white/5 border border-transparent"
+                }`}
         >
             <Icon className={`w-5 h-5 ${active ? "text-cyan-400" : "text-slate-400 group-hover:text-slate-200"} transition-colors`} />
             <span className={`text-sm font-medium ${active ? "text-white" : "text-slate-400 group-hover:text-slate-200"} transition-colors`}>

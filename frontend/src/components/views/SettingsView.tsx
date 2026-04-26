@@ -112,7 +112,7 @@ export function SettingsView({ drawMode, onStartDrawing, onResetDrawing, vertexC
                 <div className="p-5 space-y-2">
                     <h2 className="text-xs font-bold text-slate-200 uppercase tracking-widest">About</h2>
                     <p className="text-[11px] text-slate-400 leading-relaxed">
-                        AquaWatch · Maritime Surveillance Console. Backed by Global Fishing Watch
+                        Overfished · Maritime Surveillance Console. Backed by Global Fishing Watch
                         AIS, ProtectedSeas MPAs, and the Overfish AI agent network.
                     </p>
                 </div>
