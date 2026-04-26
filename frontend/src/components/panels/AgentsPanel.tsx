@@ -218,7 +218,7 @@ export function AgentsPanel({ selectedShip, className }: Props) {
 
           {mutation.isPending && (
             <p className="text-[10px] text-slate2-400">
-              Long-running call. Backing off requires the BFF on http://localhost:8001.
+              Long-running call. Backing off requires the BFF on http://localhost:8000.
             </p>
           )}
 

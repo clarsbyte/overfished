@@ -9,9 +9,11 @@ description = "Overfished BFF API (scaffold)"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "auth0-fastapi-api>=1.0.0b7",
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.32.0",
   "pydantic-settings>=2.6.0",
+  "python-dotenv>=1.0.0",
   "requests>=2.32.0",
   "twilio>=9.0.0",
 ]

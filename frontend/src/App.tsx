@@ -25,6 +25,7 @@ import type { DocumentArtifact, Vessel } from "@/types/schemas";
 import type { Ship } from "@/types/ship";
 
 const MAP_RENDERER_KEY = "ui:map-renderer";
+const LAYER_PLASTIC_KEY = "ui:layer-plastic";
 type BottomDockTab = "vessels" | "incidents" | "zones" | "layers";
 export type NavView = "ops" | "overview" | "incidents" | "vessels" | "analytics" | "reports" | "settings";
 
@@ -49,9 +50,20 @@ export default function App() {
     return stored === "mapbox" ? "mapbox" : "globe";
   });
 
+  const [showPlastic, setShowPlastic] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(LAYER_PLASTIC_KEY) === "1";
+  });
+
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(MAP_RENDERER_KEY, renderer);
   }, [renderer]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LAYER_PLASTIC_KEY, showPlastic ? "1" : "0");
+    }
+  }, [showPlastic]);
 
   const mapRef = useRef<MapHandle | null>(null);
 
@@ -171,6 +183,7 @@ export default function App() {
             selected={selected}
             onSelect={handleSelect}
             speciesOverlay={speciesOverlay}
+            showPlastic={showPlastic}
           />
         </div>
 
@@ -241,6 +254,22 @@ export default function App() {
                     className={`rounded-full px-3 py-1 transition ${renderer === "mapbox" ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
                   >
                     Mapbox
+                  </button>
+                  <div className="w-px h-4 self-center bg-white/15" aria-hidden />
+                  <button
+                    type="button"
+                    disabled={renderer !== "mapbox"}
+                    onClick={() => setShowPlastic((v) => !v)}
+                    title={renderer === "mapbox" ? "River plastic (Meijer 2021)" : "Switch to Mapbox to use this layer"}
+                    className={`rounded-full px-3 py-1 transition ${
+                      renderer !== "mapbox"
+                        ? "cursor-not-allowed text-slate2-500/70 opacity-50"
+                        : showPlastic
+                          ? "glass-chip text-accent-safe"
+                          : "text-slate2-300 hover:glass-chip"
+                    }`}
+                  >
+                    Plastic
                   </button>
                 </div>
               </LiquidGlass>

@@ -2,6 +2,9 @@
   "plugins": {
     "databricks-skills": {
       "enabled": true
+    },
+    "auth0": {
+      "enabled": true
     }
   }
 }

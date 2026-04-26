@@ -1,3 +1,5 @@
+import { buildAuthFetchOptions } from "@/lib/authToken";
+
 function resolveAgentApiBase(): string {
   const raw = import.meta.env.VITE_AGENT_API_URL;
   if (raw == null || String(raw).trim() === "") return "/agentapi";
@@ -7,11 +9,14 @@ function resolveAgentApiBase(): string {
 const BASE = resolveAgentApiBase();
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : "{}",
-  });
+  const res = await fetch(
+    `${BASE}${path}`,
+    await buildAuthFetchOptions({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : "{}",
+    }),
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status} ${res.statusText} (${path})${text ? ` - ${text}` : ""}`);
@@ -20,7 +25,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, await buildAuthFetchOptions());
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status} ${res.statusText} (${path})${text ? ` - ${text}` : ""}`);

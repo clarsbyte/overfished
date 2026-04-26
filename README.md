@@ -18,7 +18,7 @@ Surface illegal or high-risk fishing using vessel activity, regional regulations
 
 | Layer | Location | Role |
 |-------|----------|------|
-| Presentation | [frontend/](frontend/) | Next.js UI; calls the BFF over HTTP only. |
+| Presentation | [frontend/](frontend/) | Vite + React; calls the BFF over HTTP only. |
 | API (BFF) | [api/](api/) | FastAPI routes, OpenAPI, DI; **no** embedded business logic in this scaffold. |
 | ML library | [ml/](ml/) | Local-first medallion ETL + sequence/CV modules; can run without Databricks. |
 | Agent plugins (optional) | [plugins/langchain_plugin/](plugins/langchain_plugin/), [plugins/fetch_plugin/](plugins/fetch_plugin/) | LangChain and/or Fetch-style orchestration behind `AgentBackend`. |
@@ -26,10 +26,44 @@ Surface illegal or high-risk fishing using vessel activity, regional regulations
 
 Architecture detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## startup (full stack, local)
+
+**startup** = bring up Python/ML/proxy *prep* (if needed) plus the map/demo API, the auth + agent + sequence BFF, and the Vite app with linked data (as on `npm run dev`). In Cursor, when you say *startup*, the agent should use this flow.
+
+```bash
+./scripts/startup.sh
+```
+
+`startup.sh` runs, in order (unless you skip; see below):
+
+1. **Python stack** (only if `overfished-ml`, `overfished_api`, or `overfished_fetch_plugin` is missing) — `backend/requirements.txt` (Jinja2, LangChain for tools in the map API, `playwright` library, etc.), [ml/](ml/), `pip install -e "api[ml,dev]"`, [plugins/fetch_plugin/](plugins/fetch_plugin/) (agentic `/agent` when `AGENT_BACKEND=hybrid` — default in the script).
+2. **Playwright Chromium** — `playwright install chromium` so on-demand and pre-rendered **PDFs** work (see [backend/documents/render.py](backend/documents/render.py)).
+3. **ML smoke** — one synthetic RNN + BiLSTM + ensemble run so `torch` + [overfished-ml](ml/) is exercised the same way as the BFF [sequence routes](api/src/overfished_api/routers/sequence.py) (no extra HTTP process).
+4. **PDF prerender** — `python -m documents.render` in [backend/](backend/) writes the demo IUU case family to `backend/output/…` (served as `/static` from the map API).
+5. **Servers** — uvicorn on 8000 + 8001, then `npm run dev` in [frontend/](frontend/).
+
+**Faster re-runs (skip heavy steps):** `STARTUP_QUICK=1 ./scripts/startup.sh` only starts the three long-running services. You can also set individually: `STARTUP_SKIP_PIP=1`, `STARTUP_SKIP_PLAYWRIGHT=1`, `STARTUP_SKIP_PDF_PRERENDER=1`, `STARTUP_SKIP_ML_SMOKE=1`. Optional: `STARTUP_INSTALL_LANGCHAIN_PLUGIN=1` adds the [langchain plugin](plugins/langchain_plugin/) for `AGENT_BACKEND=langchain`.
+
+| Port | App |
+|------|-----|
+| 8000 | [backend/](backend/) `api.main` — map, cases, Twilio, fixtures, **static output / PDFs** (same routes the SPA calls via `/api/…` in dev). |
+| 8001 | [api/](api/) `overfished_api` — `/agent`, `/ml/sequence/…`, `/audio`, Auth0. Proxied as `/agentapi/…` in [frontend/vite.config.ts](frontend/vite.config.ts). |
+| 5173 | [frontend/](frontend/) Vite dev with codegen + [link-data](frontend/scripts/link-data.mjs) via `predev`. |
+
+**One-time environment** (same venv is typical):
+
+1. `python3 -m venv .venv && . .venv/bin/activate` (or your preferred venv)
+2. Run `./scripts/startup.sh` once, or install manually: `pip install -r backend/requirements.txt`, `pip install -e "ml"`, `pip install -e "api[ml,dev]"`, `pip install -e "./plugins/fetch_plugin"`
+3. Root [`.env`](.env) with Auth0, `USE_FIXTURES=1` for the demo, and any API keys you need; avoid committing secrets
+
+If the BFF exits with `No module named 'fastapi_plugin'`, the Auth0 API shim is missing — `pip install -e "api"` (or re-run the installs above) pulls `auth0-fastapi-api` into the same venv. `Address already in use` on 8000/8001 means another `uvicorn` (or a prior `startup`); stop it or free those ports.
+
+Optional: Databricks, GX10, or `overfished-pipeline` on large CSVs (see [data/local_pipeline/](data/local_pipeline/)) — not part of the default `startup` script.
+
 ## Repository layout
 
 ```text
-frontend/                 Next.js app
+frontend/                 Vite + React app
 api/                      FastAPI BFF (routers + ports + deps)
 ml/                       Local-first ML package (pipeline + sequence/CV modules)
 plugins/langchain_plugin/ Optional LangChain implementation of AgentBackend
@@ -48,7 +82,13 @@ Set these in deployment or `.env` for the API (see [api/](api/) when running loc
 | `FETCH_AGENT_ENABLED` | API hybrid/fetch | Toggle Fetch path in hybrid mode (`true`/`false`). |
 | `FETCH_AGENT_TIMEOUT_SECONDS` | API hybrid/fetch | Timeout budget for Fetch attempt before fallback. |
 | `FETCH_AGENT_MAX_RETRIES` | API hybrid/fetch | Bounded retry attempts before fallback. |
-| `NEXT_PUBLIC_API_BASE_URL` | Frontend | Base URL for BFF requests. |
+| `VITE_API_URL` | Frontend | BFF base URL; empty = same-origin `/api` (Vite proxy in dev). |
+| `VITE_AUTH0_DOMAIN` | Frontend | Auth0 tenant domain (no `https://`, e.g. `dev-6n2vvavwg11rnrx2.us.auth0.com`). |
+| `VITE_AUTH0_CLIENT_ID` | Frontend | Auth0 SPA application Client ID. |
+| `VITE_AUTH0_AUDIENCE` | Frontend | Custom API identifier, e.g. `https://overfished-bff` (not Management API). |
+| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | API (BFF) | Same as Vite; used for JWT validation. Or rely on Vite-prefixed vars if using one root `.env`. |
+| `AUTH0_BYPASS` | API | `1` = skip JWT (e.g. tests); `0` = require Bearer token. |
+| `CORS_ALLOW_ORIGINS` | API | Comma-separated if the SPA and API are on different origins. |
 | `DATABRICKS_HOST` | Databricks CLI / jobs | Workspace host. |
 | `DATABRICKS_TOKEN` | Databricks CLI / jobs | PAT (never commit). |
 | `MLFLOW_TRACKING_URI` | ML jobs (optional) | Experiment tracking. |
@@ -58,6 +98,20 @@ Set these in deployment or `.env` for the API (see [api/](api/) when running loc
 | `GX10_SSH_KEY_PATH` | ML pipeline runtime (optional) | SSH private key path for GX10 auth. |
 | `GX10_SSH_PORT` | ML pipeline runtime (optional) | SSH port (default `22`). |
 | `VESSEL_IMAGE_OFFLINE` | ML image enrichment (optional) | Set `1` to use only cache/CSV/overrides (no MarineTraffic or Commons). |
+
+### Auth0: "Client is not authorized to access resource server"
+
+The **Custom API** is registered (e.g. audience `https://overfished-bff`), but the **SPA application** is not allowed to request tokens for it. This is fixed only in the [Auth0 Dashboard](https://manage.auth0.com/):
+
+1. **APIs** → open the API whose **Identifier** exactly matches `VITE_AUTH0_AUDIENCE` / `AUTH0_AUDIENCE` (e.g. `https://overfished-bff`). Create it if missing.
+2. **Applications** → your Single Page App (the **Client ID** in `.env`).
+3. Open the **APIs** tab (or **API Authorization** in Settings, depending on UI) and **authorize** this application for that API, then save.
+
+Use **Application type** = Single Page Application, **Token Endpoint Authentication** = None, and add `http://localhost:5173` to **Allowed Callback URLs**, **Allowed Logout URLs**, and **Allowed Web Origins**.
+
+**`./scripts/startup.sh`:** Vite sends **`/api`** to the **demo map API** on port `8000` and **`/agentapi`** to the **Auth0 BFF** on port `8001`. Map/health/vessel data does not go through the BFF; only agent/ML (and any route under `/agentapi`) do. A **401** on an `/agentapi/*` call usually means a missing/invalid access token, not a bad `/api` setup.
+
+**Still stuck?** Copy the full line from the browser (Auth0 error page, Network tab, or the app’s red sign-in error) when asking for help; “Callback URL mismatch”, `invalid_scope`, and `unauthorized` point to different dashboard fixes.
 
 ## Install and run (scaffold)
 

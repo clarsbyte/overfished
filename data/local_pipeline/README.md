@@ -1,5 +1,6 @@
 # Local Pipeline Data
 
+- `build_river_plastic_geojson.py` — one-shot: Meijer et al. 2021 (figshare) shapefile → slim `frontend/public/data/river_plastic_emissions.geojson` (requires `pip install geopandas`). The repo ships a small illustrative GeoJSON so Mapbox can load the layer without the download; replace the file with script output for the full outfall set.
 - `sample_fishing_events.csv`: committed sample input for reproducible local runs.
 - `sample_ship_detections.csv`: committed sample ship detections subset.
 - `raw/`: place full-size raw extracts here (see [`raw/README.md`](raw/README.md)); `raw/bulk_fishing_events.csv` is used automatically if present, or set `FISHING_EVENTS_CSV` to a repo-relative path.

@@ -19,10 +19,11 @@ interface Props {
   selected: Ship | null;
   onSelect: (ship: Ship | null) => void;
   speciesOverlay?: FeatureCollection<Geometry, GeoJsonProperties> | null;
+  showPlastic?: boolean;
 }
 
 export const MapView = forwardRef<MapHandle, Props>(function MapView(
-  { renderer, ships, tracks, selected, onSelect, speciesOverlay },
+  { renderer, ships, tracks, selected, onSelect, speciesOverlay, showPlastic },
   ref,
 ) {
   const mapboxRef = useRef<MapboxHandle | null>(null);
@@ -52,6 +53,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
       selected={selected}
       onSelect={onSelect}
       speciesOverlay={speciesOverlay}
+      showPlastic={showPlastic}
     />
   );
 });
