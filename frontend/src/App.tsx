@@ -39,9 +39,25 @@ export default function App() {
   const [activeDockTab, setActiveDockTab] = useState<BottomDockTab>("vessels");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeRegionName, setActiveRegionName] = useState<string | null>(null);
+  const [cameraLocked, setCameraLocked] = useState(false);
   const [documents, setDocuments] = useState<DocumentArtifact[]>([]);
   const [portCall, setPortCall] = useState<{ endLat: number; endLng: number } | null>(null);
   const [demoError] = useState<string | null>(null);
+
+  const handleRegionSelected = useCallback((region: { name: string }) => {
+    setActiveRegionName(region.name);
+    setCameraLocked(true);
+  }, []);
+
+  // Esc unlocks the camera
+  useEffect(() => {
+    if (!cameraLocked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCameraLocked(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cameraLocked]);
 
   const [renderer, setRenderer] = useState<"globe" | "mapbox">(() => {
     if (typeof window === "undefined") return "globe";
@@ -171,6 +187,8 @@ export default function App() {
             selected={selected}
             onSelect={handleSelect}
             speciesOverlay={speciesOverlay}
+            cameraLocked={cameraLocked}
+            onRegionSelected={handleRegionSelected}
           />
         </div>
 
@@ -210,6 +228,25 @@ export default function App() {
             </LiquidGlass>
           </div>
         </div>
+
+        {/* Camera-lock indicator — visible only when a region is selected */}
+        {cameraLocked && renderer === "globe" && (
+          <div className="pointer-events-none absolute left-1/2 top-16 z-30 -translate-x-1/2">
+            <button
+              type="button"
+              onClick={() => setCameraLocked(false)}
+              className="glass-chip pointer-events-auto flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent-iuu transition hover:text-slate2-100"
+              title="Unlock camera (Esc)"
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-iuu opacity-70" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent-iuu" />
+              </span>
+              {activeRegionName ? `Locked · ${activeRegionName}` : "Locked"}
+              <span className="font-mono text-[9px] text-slate2-400">ESC</span>
+            </button>
+          </div>
+        )}
 
         {/* Vessel detail floating card — bottom-left, above dock */}
         {selected && (
