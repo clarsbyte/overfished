@@ -33,10 +33,10 @@ def get_vessels_in_region(
 def get_vessel_info(mmsi: str) -> Vessel:
     """Identity + ownership + authorizations for a single MMSI."""
     if _USE_FIXTURES:
-        vessels = load_models("vessels_galapagos", Vessel)
-        match = next((v for v in vessels if v.mmsi == mmsi), None)
+        all_vessels = load_models("vessels_galapagos", Vessel)
+        match = next((v for v in all_vessels if v.mmsi == mmsi), None)
         if match is None:
-            raise ValueError(f"No fixture for MMSI {mmsi!r}")
+            return Vessel(mmsi=mmsi)  # stub for vessels without fixture data
         return match
     raise NotImplementedError("set USE_FIXTURES=1")
 
@@ -49,9 +49,10 @@ def get_vessel_events(
 ) -> list[VesselEvent]:
     """Behavioural events (FISHING, GAP, ENCOUNTER, LOITERING, PORT_VISIT)."""
     if _USE_FIXTURES:
-        if mmsi != "412345678":
+        try:
+            events = load_models(f"events_{mmsi}", VesselEvent)
+        except FileNotFoundError:
             return []
-        events = load_models(f"events_{mmsi}", VesselEvent)
         if event_types:
             events = [e for e in events if e.type in event_types]
         return events
@@ -61,9 +62,10 @@ def get_vessel_events(
 def get_vessel_track(mmsi: str, hours: int = 24) -> list[list[float]]:
     """Position history as ``[[lat, lng], ...]`` — feeds globe.gl Paths layer."""
     if _USE_FIXTURES:
-        if mmsi != "412345678":
+        try:
+            return load_raw(f"track_{mmsi}")  # type: ignore[return-value]
+        except FileNotFoundError:
             return []
-        return load_raw(f"track_{mmsi}")  # type: ignore[return-value]
     raise NotImplementedError("set USE_FIXTURES=1")
 
 
