@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Bot, Crosshair, Gavel, Play, Radar, Workflow } from "lucide-react";
+import { Bot, MapPin, Play, Radar, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { CollapsiblePanel, type PanelStatus } from "@/components/CollapsiblePanel";
@@ -10,51 +10,60 @@ import {
 } from "@/lib/agentApi";
 import type { Ship } from "@/types/ship";
 
-function coerceOutput(out: AgentRunResponse["output"] | undefined): string {
-  if (typeof out === "string") return out;
+function coerceOutput(data: AgentRunResponse | undefined): string {
+  if (!data) return "";
+  const out = data.output;
+  if (typeof out === "string" && out) return out;
   if (Array.isArray(out)) {
-    return out
+    const text = out
       .map((b: AgentTextBlock | string) => {
         if (typeof b === "string") return b;
         if (b && typeof b.text === "string") return b.text;
-        try {
-          return JSON.stringify(b);
-        } catch {
-          return String(b);
-        }
+        try { return JSON.stringify(b); } catch { return String(b); }
       })
       .filter(Boolean)
       .join("\n");
+    if (text) return text;
   }
-  return "";
+  if (data.summary) return data.summary;
+  return JSON.stringify(data, null, 2);
 }
 
 interface Props {
   selectedShip: Ship | null;
   className?: string;
+  onRequestGlobePick?: (cb: (lat: number, lng: number) => void) => void;
 }
 
-type TabId = "gfw" | "vessel" | "law" | "complete";
+type TabId = "gfw" | "complete";
 
 const TABS: { id: TabId; label: string; icon: JSX.Element; eta: string }[] = [
   { id: "gfw", label: "GFW", icon: <Radar size={12} />, eta: "30-60 s" },
-  { id: "vessel", label: "AIS", icon: <Crosshair size={12} />, eta: "30-120 s" },
-  { id: "law", label: "Law", icon: <Gavel size={12} />, eta: "10-30 s" },
-  { id: "complete", label: "Complete", icon: <Workflow size={12} />, eta: "60-120 s" },
+  { id: "complete", label: "Complete", icon: <Workflow size={12} />, eta: "2-3 min" },
 ];
 
-export function AgentsPanel({ selectedShip, className }: Props) {
+export function AgentsPanel({ selectedShip, className, onRequestGlobePick }: Props) {
   const [tab, setTab] = useState<TabId>("gfw");
   const [query, setQuery] = useState("");
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
-  const [mmsi, setMmsi] = useState("");
+  const [portCountryCode, setPortCountryCode] = useState("ECU");
   const [elapsed, setElapsed] = useState<number | null>(null);
+  const [awaitingPin, setAwaitingPin] = useState(false);
+
+  const handlePlacePin = () => {
+    if (!onRequestGlobePick) return;
+    setAwaitingPin(true);
+    onRequestGlobePick((pickedLat, pickedLng) => {
+      setLat(pickedLat.toFixed(5));
+      setLon(pickedLng.toFixed(5));
+      setAwaitingPin(false);
+    });
+  };
 
   useEffect(() => {
     if (!selectedShip) return;
     setQuery(selectedShip.mmsi);
-    setMmsi(selectedShip.mmsi);
     setLat(selectedShip.lat.toFixed(4));
     setLon(selectedShip.lon.toFixed(4));
   }, [selectedShip]);
@@ -73,9 +82,7 @@ export function AgentsPanel({ selectedShip, className }: Props) {
         if (!Number.isFinite(la) || !Number.isFinite(lo)) {
           throw new Error("Latitude and longitude required");
         }
-        if (tab === "vessel") return await agentApi.vessel(la, lo);
-        if (tab === "law") return await agentApi.law(la, lo);
-        return await agentApi.complete(la, lo, mmsi || undefined);
+        return await agentApi.complete(la, lo, portCountryCode || undefined);
       } finally {
         setElapsed((performance.now() - start) / 1000);
       }
@@ -136,6 +143,21 @@ export function AgentsPanel({ selectedShip, className }: Props) {
               />
             </Field>
           ) : (
+            <>
+            {onRequestGlobePick && (
+              <button
+                onClick={handlePlacePin}
+                disabled={awaitingPin}
+                className={`flex w-full items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-medium ring-1 transition ${
+                  awaitingPin
+                    ? "animate-pulse bg-yellow-400/20 text-yellow-300 ring-yellow-400/50"
+                    : "bg-ink-900 text-slate2-300 ring-ink-700 hover:bg-ink-800 hover:text-slate2-100"
+                }`}
+              >
+                <MapPin size={11} />
+                {awaitingPin ? "Click globe to place pin…" : "Place pin on globe"}
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Field label="Latitude">
                 <input
@@ -154,16 +176,18 @@ export function AgentsPanel({ selectedShip, className }: Props) {
                 />
               </Field>
               {tab === "complete" && (
-                <Field label="MMSI (optional)">
+                <Field label="Port Country Code">
                   <input
-                    value={mmsi}
-                    onChange={(e) => setMmsi(e.target.value)}
-                    placeholder="412345678"
+                    value={portCountryCode}
+                    onChange={(e) => setPortCountryCode(e.target.value.toUpperCase())}
+                    placeholder="ECU"
+                    maxLength={3}
                     className="w-full rounded border border-ink-800 bg-ink-900 px-2 py-1 font-mono text-[11px] text-slate2-200 focus:border-accent-safe focus:outline-none"
                   />
                 </Field>
               )}
             </div>
+            </>
           )}
 
           <button
@@ -194,8 +218,7 @@ export function AgentsPanel({ selectedShip, className }: Props) {
                 {elapsed !== null && <span>{elapsed.toFixed(1)} s</span>}
               </div>
               <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded border border-ink-800 bg-ink-900 p-2 font-mono text-[11px] leading-snug text-slate2-200">
-                {coerceOutput(mutation.data.output) ||
-                  JSON.stringify(mutation.data, null, 2)}
+                {coerceOutput(mutation.data)}
               </pre>
             </div>
           )}

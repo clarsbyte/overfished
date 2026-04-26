@@ -76,6 +76,7 @@ interface Props {
   bySource?: Record<string, number>;
   selectedShip?: Ship | null;
   onSpeciesHighlightChange?: (geojson: FeatureCollection | null) => void;
+  onRequestGlobePick?: (cb: (lat: number, lng: number) => void) => void;
 }
 
 export function OpsView({
@@ -94,6 +95,7 @@ export function OpsView({
   lastPortCall,
   selectedShip,
   onSpeciesHighlightChange,
+  onRequestGlobePick,
 }: Props) {
   const [query, setQuery] = useState("");
   const [highRiskOnly, setHighRiskOnly] = useState(false);
@@ -392,6 +394,7 @@ export function OpsView({
             <AgentsPanel
               selectedShip={selectedShip ?? null}
               className="pointer-events-auto w-full rounded-[30px]"
+              onRequestGlobePick={onRequestGlobePick}
             />
           </LiquidGlass>
 

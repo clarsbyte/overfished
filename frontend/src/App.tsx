@@ -2,6 +2,7 @@ import type { FeatureCollection } from "geojson";
 import {
   AlertTriangle,
   Bell,
+  Fish,
   Layers3,
   MapPinned,
   Pencil,
@@ -27,7 +28,7 @@ import type { DocumentArtifact, Vessel } from "@/types/schemas";
 import type { Ship } from "@/types/ship";
 
 const MAP_RENDERER_KEY = "ui:map-renderer";
-type BottomDockTab = "vessels" | "incidents" | "zones" | "layers";
+type BottomDockTab = "vessels" | "incidents" | "zones" | "layers" | "animals";
 export type NavView = "ops" | "overview" | "incidents" | "vessels" | "analytics" | "reports" | "settings";
 
 
@@ -44,6 +45,24 @@ export default function App() {
   const [documents, setDocuments] = useState<DocumentArtifact[]>([]);
   const [portCall, setPortCall] = useState<{ endLat: number; endLng: number } | null>(null);
   const [demoError] = useState<string | null>(null);
+
+  const [agentPin, setAgentPin] = useState<{ lat: number; lng: number } | null>(null);
+  const agentPickCbRef = useRef<((lat: number, lng: number) => void) | null>(null);
+  const [isPicking, setIsPicking] = useState(false);
+  const [showSharkHeatmap, setShowSharkHeatmap] = useState(false);
+
+  const handleRequestGlobePick = useCallback((cb: (lat: number, lng: number) => void) => {
+    agentPickCbRef.current = cb;
+    setIsPicking(true);
+  }, []);
+
+  const handleGlobeClick = useCallback((lat: number, lng: number) => {
+    if (!agentPickCbRef.current) return;
+    agentPickCbRef.current(lat, lng);
+    agentPickCbRef.current = null;
+    setAgentPin({ lat, lng });
+    setIsPicking(false);
+  }, []);
 
   const [renderer, setRenderer] = useState<"globe" | "mapbox">(() => {
     if (typeof window === "undefined") return "globe";
@@ -143,6 +162,7 @@ export default function App() {
             bySource={bySource}
             selectedShip={selected}
             onSpeciesHighlightChange={handleSpeciesHighlightChange}
+            onRequestGlobePick={handleRequestGlobePick}
           />
         );
     }
@@ -173,8 +193,21 @@ export default function App() {
             selected={selected}
             onSelect={handleSelect}
             speciesOverlay={speciesOverlay}
+            onGlobeClick={handleGlobeClick}
+            pinCoord={agentPin}
+            isPicking={isPicking}
+            showSharkHeatmap={showSharkHeatmap}
           />
         </div>
+
+        {isPicking && (
+          <div className="pointer-events-none absolute inset-x-0 top-20 z-40 flex justify-center">
+            <div className="glass-surface glass-shell flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-yellow-300 ring-1 ring-yellow-400/40">
+              <span className="animate-pulse">⊕</span>
+              Click the globe to place your agent pin
+            </div>
+          </div>
+        )}
 
         <div className="starfield-static z-10 opacity-45 pointer-events-none" aria-hidden />
 
@@ -244,6 +277,7 @@ export default function App() {
                 { id: "vessels",   label: "Vessels",   icon: ShipIcon     },
                 { id: "incidents", label: "Incidents", icon: AlertTriangle },
                 { id: "zones",     label: "Zones",     icon: MapPinned    },
+                { id: "animals",   label: "Animals",   icon: Fish         },
                 { id: "layers",    label: "Layers",    icon: Layers3      },
               ] as const
             ).map(({ id, label, icon: Icon }) => {
@@ -278,6 +312,18 @@ export default function App() {
                 className={`rounded px-2 py-1 transition ${renderer === "mapbox" ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
               >
                 Mapbox
+              </button>
+            </div>
+          )}
+          {activeDockTab === "animals" && (
+            <div className="glass-surface glass-panel pointer-events-auto absolute -top-14 left-1/2 flex -translate-x-1/2 items-center gap-1 p-1.5 text-[11px] uppercase tracking-wide text-slate2-200">
+              <button
+                type="button"
+                onClick={() => setShowSharkHeatmap(v => !v)}
+                className={`flex items-center gap-1.5 rounded px-2 py-1 transition ${showSharkHeatmap ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
+              >
+                <Fish size={12} />
+                Shark
               </button>
             </div>
           )}

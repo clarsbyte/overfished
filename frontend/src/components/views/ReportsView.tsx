@@ -1,8 +1,9 @@
 import { api } from "@/lib/api";
+import { supabase, EVIDENCE_BUCKET } from "@/lib/supabase";
 import type { DocumentArtifact, Vessel } from "@/types/schemas";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Download, Eye, FileText, Loader2, MapPin, Phone, PlayCircle } from "lucide-react";
+import { Check, Eye, FileText, Loader2, MapPin, Phone, PhoneCall, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import CountUp from "react-countup";
 import { LiquidGlass } from "../LiquidGlass";
@@ -155,18 +156,19 @@ export function ReportsView({
             </LiquidGlass>
 
             {/* Documents — staggered reveal */}
-            <LiquidGlass className="rounded-[30px] flex-1 min-h-0" chromaticAberration={2} depth={8}>
-                <div className="p-5 flex flex-col h-full min-h-0">
+            <LiquidGlass className="rounded-[30px]" chromaticAberration={2} depth={8}>
+                <div className="p-5 space-y-2">
                     <div className="flex items-center justify-between mb-3">
                         <h2 className="text-xs font-bold text-slate-200 uppercase tracking-widest">Documents</h2>
                         <span className="text-[10px] font-mono text-slate-500">{documents.length}</span>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto -mx-2 px-2 space-y-2">
-                        {documents.length === 0 && (
-                            <div className="text-[11px] text-slate-500 py-2">
-                                Run the demo flow to generate the enforcement document family.
-                            </div>
+                    <div className="space-y-2">
+                        <EvidenceBrowser />
+                        {documents.length > 0 && (
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pt-1 pb-0.5">
+                            Generated
+                          </div>
                         )}
                         <AnimatePresence>
                             {documents.slice(0, revealedCount).map((doc, i) => {
@@ -286,18 +288,187 @@ function DocumentRow({
                 >
                     <Eye className="w-3.5 h-3.5 text-cyan-300" />
                 </button>
-                <a
-                    href={doc.pdf_url}
-                    download
-                    className="p-1.5 rounded-md hover:bg-cyan-500/10 transition-colors"
-                    title="Download PDF"
-                >
-                    <Download className="w-3.5 h-3.5 text-cyan-300" />
-                </a>
             </div>
         </div>
     );
 }
 
-// Suppress unused warning for FileText (kept here in case re-styling brings it back).
-void FileText;
+// ── Evidence Browser ────────────────────────────────────────────────────────
+
+interface EvidenceFile {
+  title: string;   // folder name
+  filePath: string; // full path for URL
+  fileName: string;
+}
+
+async function fetchEvidenceFiles(): Promise<EvidenceFile[]> {
+  if (!supabase) throw new Error("Supabase not configured");
+
+  // List root folders
+  const { data: folders, error: fErr } = await supabase.storage
+    .from(EVIDENCE_BUCKET)
+    .list("", { limit: 100, sortBy: { column: "name", order: "asc" } });
+  if (fErr) throw new Error(fErr.message);
+
+  const results: EvidenceFile[] = [];
+
+  await Promise.all(
+    (folders ?? [])
+      .filter((f) => f.id === null || f.metadata === null) // folders only
+      .map(async (folder) => {
+        const { data: files, error: fileErr } = await supabase!.storage
+          .from(EVIDENCE_BUCKET)
+          .list(folder.name, { limit: 100, sortBy: { column: "name", order: "asc" } });
+        if (fileErr || !files) return;
+        for (const file of files) {
+          if (file.id !== null) {
+            results.push({
+              title: folder.name,
+              filePath: `${folder.name}/${file.name}`,
+              fileName: file.name,
+            });
+          }
+        }
+      })
+  );
+
+  return results.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined ?? "").replace(/\/$/, "");
+const VOICE_PROXY = "/voiceapi";
+
+function EvidenceBrowser() {
+  const filesQ = useQuery({
+    queryKey: ["evidence-flat"],
+    queryFn: fetchEvidenceFiles,
+  });
+
+  const [callingFile, setCallingFile] = useState<string | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState("+1");
+  const [callState, setCallState] = useState<Record<string, { sid: string } | { error: string } | "pending">>({});
+
+  const getPublicUrl = (filePath: string) => {
+    if (!supabase) return "#";
+    const { data } = supabase.storage.from(EVIDENCE_BUCKET).getPublicUrl(filePath);
+    return data.publicUrl;
+  };
+
+  const placeCall = async (file: EvidenceFile) => {
+    const pdfUrl = getPublicUrl(file.filePath);
+    setCallState((s) => ({ ...s, [file.filePath]: "pending" }));
+    setCallingFile(null);
+    try {
+      const res = await fetch(`${VOICE_PROXY}/voice/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pdf_url: pdfUrl,
+          to_number: phoneNumber,
+          public_base_url: BACKEND_URL,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const json = await res.json() as { call_sid: string; status: string };
+      setCallState((s) => ({ ...s, [file.filePath]: { sid: json.call_sid } }));
+    } catch (e) {
+      setCallState((s) => ({ ...s, [file.filePath]: { error: String(e) } }));
+    }
+  };
+
+  const files = filesQ.data ?? [];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Evidence</span>
+        {filesQ.isPending && <Loader2 className="w-3 h-3 animate-spin text-slate-500" />}
+      </div>
+
+      {filesQ.isError && (
+        <div className="text-[11px] text-red-400">{(filesQ.error as Error).message}</div>
+      )}
+      {!filesQ.isPending && files.length === 0 && (
+        <div className="text-[11px] text-slate-500">No evidence files found.</div>
+      )}
+
+      <div className="space-y-2">
+        {files.map((file) => {
+          const state = callState[file.filePath];
+          const isDialing = state === "pending";
+          const queued = state && state !== "pending" && "sid" in state;
+          const failed = state && state !== "pending" && "error" in state;
+
+          return (
+            <div key={file.filePath} className="space-y-1.5">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-cyan-400/30 transition-colors group">
+                <div className="w-8 h-8 rounded-lg bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-4 h-4 text-red-300" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-semibold text-slate-100 truncate">{file.title}</div>
+                  <div className="text-[10px] font-mono text-slate-500 truncate">{file.fileName}</div>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <a
+                    href={getPublicUrl(file.filePath)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 rounded-md hover:bg-cyan-500/10 transition-colors"
+                    title="View PDF"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-cyan-300" />
+                  </a>
+                  <button
+                    onClick={() => setCallingFile(callingFile === file.filePath ? null : file.filePath)}
+                    disabled={isDialing}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      queued ? "text-green-400" : isDialing ? "text-slate-500" : "text-amber-300 hover:bg-amber-500/10"
+                    }`}
+                    title="Call vessel"
+                  >
+                    {isDialing
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : queued
+                        ? <PhoneCall className="w-3.5 h-3.5" />
+                        : <Phone className="w-3.5 h-3.5" />
+                    }
+                  </button>
+                </div>
+              </div>
+
+              {/* Inline call form */}
+              {callingFile === file.filePath && (
+                <div className="flex gap-2 px-1">
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="+16198871884"
+                    className="flex-1 rounded-lg border border-ink-800 bg-ink-900 px-3 py-1.5 font-mono text-[11px] text-slate-200 focus:border-amber-400/60 focus:outline-none"
+                  />
+                  <button
+                    onClick={() => void placeCall(file)}
+                    className="flex items-center gap-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/25 transition-colors"
+                  >
+                    <Phone className="w-3 h-3" /> Call
+                  </button>
+                </div>
+              )}
+
+              {/* Call status */}
+              {queued && (
+                <div className="px-1 text-[10px] font-mono text-green-400">
+                  ✓ Queued · {(state as { sid: string }).sid.slice(0, 18)}…
+                </div>
+              )}
+              {failed && (
+                <div className="px-1 text-[10px] text-red-400">{(state as { error: string }).error}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

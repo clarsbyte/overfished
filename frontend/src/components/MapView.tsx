@@ -19,10 +19,14 @@ interface Props {
   selected: Ship | null;
   onSelect: (ship: Ship | null) => void;
   speciesOverlay?: FeatureCollection<Geometry, GeoJsonProperties> | null;
+  onGlobeClick?: (lat: number, lng: number) => void;
+  pinCoord?: { lat: number; lng: number } | null;
+  isPicking?: boolean;
+  showSharkHeatmap?: boolean;
 }
 
 export const MapView = forwardRef<MapHandle, Props>(function MapView(
-  { renderer, ships, tracks, selected, onSelect, speciesOverlay },
+  { renderer, ships, tracks, selected, onSelect, speciesOverlay, onGlobeClick, pinCoord, isPicking, showSharkHeatmap },
   ref,
 ) {
   const mapboxRef = useRef<MapboxHandle | null>(null);
@@ -40,7 +44,16 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView(
 
   if (renderer === "globe") {
     return (
-      <GlobeView ref={globeRef} ships={ships} selected={selected} onSelect={onSelect} />
+      <GlobeView
+        ref={globeRef}
+        ships={ships}
+        selected={selected}
+        onSelect={onSelect}
+        onGlobeClick={onGlobeClick}
+        pinCoord={pinCoord}
+        isPicking={isPicking}
+        showSharkHeatmap={showSharkHeatmap}
+      />
     );
   }
 

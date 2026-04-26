@@ -1,10 +1,4 @@
-function resolveAgentApiBase(): string {
-  const raw = import.meta.env.VITE_AGENT_API_URL;
-  if (raw == null || String(raw).trim() === "") return "/agentapi";
-  return String(raw).replace(/\/$/, "");
-}
-
-const BASE = resolveAgentApiBase();
+const BASE = "/agentapi";
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -36,7 +30,11 @@ export type AgentTextBlock = {
 
 export interface AgentRunResponse {
   agent: string;
-  output: string | AgentTextBlock[];
+  output?: string | AgentTextBlock[];
+  summary?: string;
+  risk?: boolean;
+  pdf_path?: string;
+  case_id?: string;
   [k: string]: unknown;
 }
 
@@ -103,8 +101,8 @@ export const agentApi = {
     post<AgentRunResponse>("/agent/vessel", { latitude, longitude, radius_miles }),
   law: (latitude: number, longitude: number) =>
     post<AgentRunResponse>("/agent/law", { latitude, longitude }),
-  complete: (latitude: number, longitude: number, mmsi?: string, radius_miles = 50) =>
-    post<AgentRunResponse>("/agent/complete", { latitude, longitude, radius_miles, mmsi }),
+  complete: (latitude: number, longitude: number, port_country_code?: string) =>
+    post<AgentRunResponse>("/agent/complete", { latitude, longitude, port_country_code }),
 
   sequenceDemo: () => get<SequenceReport>("/ml/sequence/demo"),
   sequenceReport: (body: SequenceReportRequest) =>
