@@ -28,6 +28,7 @@ const MAP_RENDERER_KEY = "ui:map-renderer";
 type BottomDockTab = "vessels" | "incidents" | "zones" | "layers";
 export type NavView = "ops" | "overview" | "incidents" | "vessels" | "analytics" | "reports" | "settings";
 
+
 export default function App() {
   const { ships, tracks, isLoading, errors, bySource } = useShips();
 
