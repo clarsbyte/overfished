@@ -322,7 +322,7 @@ async def twilio_voice_respond(request: Request):
         )
 
     try:
-        reply = comms_lookup.haiku_respond(call_sid, user_text)
+        reply = comms_lookup.gemma_respond(call_sid, user_text)
     except Exception as exc:
         reply = f"System error generating response: {exc}. Please contact the issuing authority directly."
 

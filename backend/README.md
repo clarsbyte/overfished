@@ -11,7 +11,7 @@ The trigger is "a supposed vessel is entering region X." The pipeline runs three
 ```
                        ┌──────────────────────────────────────┐
                        │           pipeline_agent.py          │
-                       │  Supervisor (Claude Sonnet 4.6)      │
+                       │  Supervisor (Gemma 4 via Ollama)     │
                        └───────────┬───────────┬───────────┬──┘
                                    │           │           │
               ┌────────────────────┘           │           └─────────────────┐
@@ -112,9 +112,11 @@ The curated cache currently covers three demo regions: Galápagos Marine Reserve
 Copy `.env.example` to `.env` and fill in:
 
 ```
-ANTHROPIC_API_KEY=...      # Claude API key (api.anthropic.com)
 AISSTREAM_API_KEY=...      # https://aisstream.io  (free)
 GFW_API_TOKEN=...          # https://globalfishingwatch.org/our-apis/  (free, manual approval)
+# Optional — override Ollama defaults:
+# OLLAMA_HOST=http://localhost:11434
+# OLLAMA_MODEL=gemma4:latest
 ```
 
 ### Install
@@ -123,6 +125,22 @@ GFW_API_TOKEN=...          # https://globalfishingwatch.org/our-apis/  (free, ma
 cd backend
 pip install -r requirements.txt
 ```
+
+### Ollama (local LLM)
+
+The agents call a local Gemma 4 model through Ollama. Install Ollama
+(`curl -fsSL https://ollama.com/install.sh | sh` on Linux), then:
+
+```bash
+ollama serve                  # starts the daemon on http://localhost:11434
+ollama pull gemma4            # ~9.6 GB download, one-time
+ollama run gemma4 "hi"        # smoke test
+```
+
+Set `OLLAMA_HOST` if the daemon runs elsewhere, or `OLLAMA_MODEL` to swap tags.
+Tool-calling reliability on a hosted Claude model is still higher than any
+local model, so if the supervisor occasionally mis-formats tool args, that's
+the trade-off you're making for running offline.
 
 LangChain is pinned `>=0.3,<1.0` because the v1 release moved `AgentExecutor` and `create_tool_calling_agent` out of `langchain.agents` into `langchain-classic`. Migrating to LangGraph is a clean follow-up.
 
@@ -233,9 +251,9 @@ A single end-to-end run is ~60–180 s depending on AIS density and how many ves
 | Regional dossier | 5–10 s | One LLM hop in `regional_agent` |
 | 4Wings SAR | 1–3 s | Single REST call |
 | Per-vessel IUU classify (×6) | 30–60 s each | Each call fans out to GFW Vessels / Insights / Events plus an LLM hop |
-| Supervisor synthesis | 5–10 s | Final LLM hop on Sonnet 4.6, 8192 max tokens |
+| Supervisor synthesis | 5–30 s | Final LLM hop on Gemma 4 (local), num_predict=8192 — wall time depends on local GPU/CPU |
 
-Switching the supervisor to Haiku 4.5 for the synthesis step is a one-line change that cuts ~30 s off latency without affecting decision quality (synthesis is mechanical formatting).
+Local-model latency dominates if you're on CPU; a consumer GPU brings synthesis well under 10 s. Swap `OLLAMA_MODEL` for a smaller tag to trade quality for speed.
 
 ---
 

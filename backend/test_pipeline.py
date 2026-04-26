@@ -61,7 +61,7 @@ SCENARIOS = {
 
 def _check_required_env() -> int:
     missing = [
-        k for k in ("ANTHROPIC_API_KEY", "AISSTREAM_API_KEY", "GFW_API_TOKEN")
+        k for k in ("AISSTREAM_API_KEY", "GFW_API_TOKEN")
         if not os.getenv(k)
     ]
     if missing:

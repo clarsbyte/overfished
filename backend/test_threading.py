@@ -39,7 +39,7 @@ DISCOVERY_DAYS_BACK = 90
 
 
 def _check_required_env() -> int:
-    missing = [k for k in ("ANTHROPIC_API_KEY", "GFW_API_TOKEN") if not os.getenv(k)]
+    missing = [k for k in ("GFW_API_TOKEN",) if not os.getenv(k)]
     if missing:
         print(f"ERROR: missing env vars: {', '.join(missing)}")
         return 1
