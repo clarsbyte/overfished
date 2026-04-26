@@ -124,6 +124,28 @@ export interface SequenceReportRequest {
   };
 }
 
+export interface AgentStreamEvent {
+  stage: string;
+  status: "started" | "running" | "done" | "error" | "complete";
+  detail?: Record<string, unknown>;
+  result?: AgentRunResponse;
+}
+
+export function completeStreamUrl(
+  latitude: number,
+  longitude: number,
+  radius_miles?: number,
+  port_country_code?: string,
+): string {
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+  });
+  if (radius_miles !== undefined) params.set("radius_miles", String(radius_miles));
+  if (port_country_code) params.set("port_country_code", port_country_code);
+  return `${BASE}/agent/complete/stream?${params.toString()}`;
+}
+
 export const agentApi = {
   gfw: (query: string, daysBack = 365) =>
     post<AgentRunResponse>("/agent/gfw", { query, days_back: daysBack }),
@@ -133,6 +155,7 @@ export const agentApi = {
     post<AgentRunResponse>("/agent/law", { latitude, longitude }),
   complete: (latitude: number, longitude: number, port_country_code?: string) =>
     post<AgentRunResponse>("/agent/complete", { latitude, longitude, port_country_code }),
+  completeStreamUrl,
 
   sequenceDemo: () => get<SequenceReport>("/ml/sequence/demo"),
   sequenceReport: (body: SequenceReportRequest) =>

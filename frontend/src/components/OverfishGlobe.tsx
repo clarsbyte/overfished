@@ -87,6 +87,7 @@ export interface LayerOverrides {
   showPaths?: boolean;
   flightCount?: number;
   showSharkHeatmap?: boolean;
+  showTunaHeatmap?: boolean;
 }
 
 interface SharkPoint {
@@ -94,6 +95,7 @@ interface SharkPoint {
   lng: number;
   weight: number;
 }
+
 
 interface Props {
   draw: ReturnType<typeof useDrawController>;
@@ -140,6 +142,7 @@ export function OverfishGlobe({
   const showPaths = layerOverrides?.showPaths ?? controls.showPaths;
   const flightCount = layerOverrides?.flightCount ?? controls.flightCount;
   const showSharkHeatmap = layerOverrides?.showSharkHeatmap ?? controls.showSharkHeatmap;
+  const showTunaHeatmap = layerOverrides?.showTunaHeatmap ?? controls.showTunaHeatmap;
 
   useEffect(() => {
     if (!globeRef.current) return;
@@ -329,7 +332,7 @@ export function OverfishGlobe({
       ctx.globalCompositeOperation = "lighter";
 
       for (const pt of oceanPts) {
-        const px = ((pt.lng + 180) / 360) * W;
+        const px = ((90 - pt.lng + 360) % 360) / 360 * W;
         const py = ((90 - pt.lat) / 180) * H;
         const r = 25 + pt.weight * 30;
         const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
@@ -374,6 +377,136 @@ export function OverfishGlobe({
       removeExisting();
     };
   }, [showSharkHeatmap, sharkQ.data]);
+
+  // ── Atlantic Bluefin Tuna range overlay (hardcoded polygons) ────────
+  useEffect(() => {
+    if (!globeRef.current) return;
+    const scene = globeRef.current.scene();
+
+    const removeExisting = () => {
+      const old = scene.getObjectByName("tuna-heatmap-overlay");
+      if (old) {
+        scene.remove(old);
+        (old as THREE.Mesh).geometry.dispose();
+        ((old as THREE.Mesh).material as THREE.MeshBasicMaterial).map?.dispose();
+        ((old as THREE.Mesh).material as THREE.MeshBasicMaterial).dispose();
+      }
+    };
+
+    removeExisting();
+    if (!showTunaHeatmap) return;
+
+    let cancelled = false;
+
+    void whenLandMaskReady().then(() => {
+      if (cancelled) return;
+
+      const W = 4096;
+      const H = 2048;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d")!;
+
+      const toX = (lng: number) => ((90 - lng + 360) % 360) / 360 * W;
+      const toY = (lat: number) => ((90 - lat) / 180) * H;
+
+      // Core North Atlantic range
+      const coreRange: [number, number][] = [
+        [-75, 35], [-80, 25], [-80, 18], [-70, 10], [-55, 5], [-40, 0],
+        [-20, 5], [-15, 10], [-18, 20], [-15, 28], [-10, 36], [-6, 36],
+        [-5, 43], [-2, 44], [0, 43], [3, 43], [6, 43], [10, 44],
+        [15, 38], [20, 37], [25, 35], [30, 35], [36, 35], [36, 32],
+        [32, 31], [25, 32], [15, 35], [10, 40], [5, 41], [-1, 42],
+        [-5, 44], [-10, 48], [-8, 55], [-5, 58], [-3, 60], [0, 62],
+        [5, 63], [10, 64], [15, 68], [10, 70], [5, 70], [-5, 68],
+        [-15, 65], [-20, 62], [-25, 58], [-30, 55], [-40, 52],
+        [-50, 48], [-55, 45], [-60, 42], [-65, 40], [-70, 38], [-75, 35],
+      ];
+
+      // Wider southern range
+      const wideRange: [number, number][] = [
+        [-70, 10], [-55, 5], [-40, 0], [-30, -5], [-20, -10],
+        [-10, -15], [0, -20], [5, -25], [10, -30], [15, -32],
+        [15, -25], [10, -20], [5, -10], [-5, 0], [-15, 10],
+        [-18, 20], [-20, 15], [-30, 5], [-50, 5], [-70, 10],
+      ];
+
+      // Mediterranean inset
+      const med: [number, number][] = [
+        [-6, 36], [0, 38], [5, 41], [10, 40], [15, 38], [20, 37],
+        [25, 35], [30, 35], [36, 35], [36, 32], [32, 31], [25, 32],
+        [20, 33], [15, 35], [10, 37], [5, 38], [0, 37], [-6, 36],
+      ];
+
+      const fillPoly = (poly: [number, number][], alpha: number) => {
+        ctx.beginPath();
+        for (let i = 0; i < poly.length; i++) {
+          const [lng, lat] = poly[i];
+          const x = toX(lng), y = toY(lat);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = `rgba(60, 160, 255, ${alpha})`;
+        ctx.fill();
+      };
+
+      fillPoly(wideRange, 0.6);
+      fillPoly(coreRange, 0.85);
+      fillPoly(med, 0.95);
+
+      // Blur first to soften polygon edges
+      const blur = document.createElement("canvas");
+      blur.width = W; blur.height = H;
+      const bCtx = blur.getContext("2d")!;
+      bCtx.filter = "blur(18px)";
+      bCtx.drawImage(canvas, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(blur, 0, 0);
+
+      // Mask out land AFTER blur so color doesn't bleed onto continents
+      const imgData = ctx.getImageData(0, 0, W, H);
+      const d = imgData.data;
+      for (let py = 0; py < H; py++) {
+        const lat = 90 - (py / H) * 180;
+        for (let px = 0; px < W; px++) {
+          const lng = 90 - (px / W) * 360;
+          if (isLand(lat, lng)) {
+            const i = (py * W + px) * 4;
+            d[i] = d[i + 1] = d[i + 2] = d[i + 3] = 0;
+          }
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+
+      const GLOBE_R = 100;
+      const geom = new THREE.SphereGeometry(GLOBE_R * 1.004, 128, 64);
+      const mat = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+        side: THREE.FrontSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
+
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = "tuna-heatmap-overlay";
+      mesh.renderOrder = 2;
+      scene.add(mesh);
+    });
+
+    return () => {
+      cancelled = true;
+      removeExisting();
+    };
+  }, [showTunaHeatmap]);
 
   const isDrawing = draw.mode === "drawing";
 

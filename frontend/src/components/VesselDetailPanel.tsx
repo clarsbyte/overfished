@@ -543,7 +543,7 @@ export function VesselDetailPanel({ ship, onClose, onRequestAgent: _onRequestAge
         </div>
 
         {/* Tab content */}
-        <div className="max-h-72 overflow-y-auto">
+        <div>
           {tab === "overview" && (
             <OverviewTab
               ship={ship}

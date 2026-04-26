@@ -17,6 +17,7 @@ export interface GlobeControlsState {
     showHeatmap: boolean;
     showPoints: boolean;
     showSharkHeatmap: boolean;
+    showTunaHeatmap: boolean;
 }
 
 const DEFAULT_STATE: GlobeControlsState = {
@@ -34,13 +35,14 @@ const DEFAULT_STATE: GlobeControlsState = {
     showHeatmap: true,
     showPoints: false,
     showSharkHeatmap: false,
+    showTunaHeatmap: false,
 };
 
 interface GlobeControlsContextType {
     controls: GlobeControlsState;
     setControl: <K extends keyof GlobeControlsState>(key: K, value: GlobeControlsState[K]) => void;
     isUpdatingLayers: boolean;
-    toggleLayer: (layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints" | "showSharkHeatmap") => void;
+    toggleLayer: (layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints" | "showSharkHeatmap" | "showTunaHeatmap") => void;
 }
 
 const GlobeControlsContext = createContext<GlobeControlsContextType | null>(null);
@@ -53,7 +55,7 @@ export function GlobeControlsProvider({ children }: { children: ReactNode }) {
         setControls((prev) => ({ ...prev, [key]: value }));
     }, []);
 
-    const toggleLayer = useCallback((layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints" | "showSharkHeatmap") => {
+    const toggleLayer = useCallback((layer: "showPaths" | "showVessels" | "showHeatmap" | "showPoints" | "showSharkHeatmap" | "showTunaHeatmap") => {
         // Show spinner immediately
         setIsUpdatingLayers(true);
 

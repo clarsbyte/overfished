@@ -113,3 +113,22 @@
   height: 100%;
   display: block;
 }
+
+/* Themed thin scrollbar — used in panels */
+.scrollbar-themed {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.25) transparent;
+}
+.scrollbar-themed::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-themed::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-themed::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.2);
+  border-radius: 999px;
+}
+.scrollbar-themed::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.45);
+}

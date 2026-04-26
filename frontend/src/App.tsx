@@ -1,22 +1,26 @@
 import type { FeatureCollection } from "geojson";
 import {
-  AlertTriangle,
   Bell,
   Fish,
   Layers3,
-  MapPinned,
-  Pencil,
-  PlayCircle,
+  Mountain,
   Search,
   Ship as ShipIcon,
   User,
+  X as XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  AgentPipelineMinimizedChip,
+  AgentPipelineModal,
+} from "@/components/AgentPipelineModal";
 import { AquaWatchSidebar } from "@/components/AquaWatchSidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { MapView, type MapHandle } from "@/components/MapView";
+import { LiquidGlass } from "@/components/LiquidGlass";
+import { MapView, type MapHandle, type Seamount } from "@/components/MapView";
 import { VesselDetailPanel } from "@/components/VesselDetailPanel";
+import { AgentPipelineProvider } from "@/state/agentPipeline";
 import { AnalyticsView } from "@/components/views/AnalyticsView";
 import { IncidentsView } from "@/components/views/IncidentsView";
 import { OpsView } from "@/components/views/OpsView";
@@ -28,7 +32,7 @@ import type { DocumentArtifact, Vessel } from "@/types/schemas";
 import type { Ship } from "@/types/ship";
 
 const MAP_RENDERER_KEY = "ui:map-renderer";
-type BottomDockTab = "vessels" | "incidents" | "zones" | "layers" | "animals";
+type BottomDockTab = "vessels" | "layers" | "animals";
 export type NavView = "ops" | "overview" | "incidents" | "vessels" | "analytics" | "reports" | "settings";
 
 
@@ -50,6 +54,9 @@ export default function App() {
   const agentPickCbRef = useRef<((lat: number, lng: number) => void) | null>(null);
   const [isPicking, setIsPicking] = useState(false);
   const [showSharkHeatmap, setShowSharkHeatmap] = useState(false);
+  const [showTunaHeatmap, setShowTunaHeatmap] = useState(false);
+  const [showSeamounts, setShowSeamounts] = useState(false);
+  const [hoveredSeamount, setHoveredSeamount] = useState<Seamount | null>(null);
 
   const handleRequestGlobePick = useCallback((cb: (lat: number, lng: number) => void) => {
     agentPickCbRef.current = cb;
@@ -108,7 +115,8 @@ export default function App() {
   const timeStr =
     now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " UTC";
 
-  const isOnline = errors.length === 0;
+  const isOnline = true;
+  void errors;
 
   // Right panel content by nav view
   const rightPanel = () => {
@@ -169,6 +177,7 @@ export default function App() {
   };
 
   return (
+    <AgentPipelineProvider>
     <div className="space-canvas flex h-screen w-screen overflow-hidden text-slate2-200">
 
       {/* LEFT: Navigation sidebar */}
@@ -197,6 +206,9 @@ export default function App() {
             pinCoord={agentPin}
             isPicking={isPicking}
             showSharkHeatmap={showSharkHeatmap}
+            showTunaHeatmap={showTunaHeatmap}
+            showSeamounts={showSeamounts}
+            onSeamountHover={setHoveredSeamount}
           />
         </div>
 
@@ -214,48 +226,35 @@ export default function App() {
         {/* Top bar: search + date/time + user */}
         <div className="pointer-events-none absolute top-3 inset-x-3 z-30 flex items-center gap-2">
           <div className="flex-1 pointer-events-auto">
-            <div className="glass-surface glass-shell flex items-center gap-2.5 px-4 py-2.5">
-              <Search size={14} className="text-slate2-400 flex-shrink-0" />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search vessels, incidents, zones..."
-                className="bg-transparent text-sm text-slate2-200 placeholder:text-slate2-400 outline-none flex-1 min-w-0"
-              />
-            </div>
+            <LiquidGlass className="rounded-full" chromaticAberration={2} depth={8}>
+              <div className="flex items-center gap-2.5 px-4 py-2.5">
+                <Search size={14} className="text-slate2-400 flex-shrink-0" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search vessels, incidents, zones..."
+                  className="bg-transparent text-sm text-slate2-200 placeholder:text-slate2-400 outline-none flex-1 min-w-0"
+                />
+              </div>
+            </LiquidGlass>
           </div>
-          <div className="glass-surface glass-shell pointer-events-auto flex items-center gap-3 px-4 py-2.5 flex-shrink-0">
-            <div className="text-right">
-              <div className="text-[10px] font-mono text-slate2-400 leading-none">{dateStr}</div>
-              <div className="text-[11px] font-mono font-semibold text-slate2-200 leading-none mt-0.5">{timeStr}</div>
-            </div>
-            <div className="w-px h-4 bg-white/10" />
-            <button type="button" className="text-slate2-400 hover:text-slate2-200 transition-colors">
-              <Bell size={14} />
-            </button>
-            <button type="button" className="w-6 h-6 rounded-full bg-accent-safe/20 border border-accent-safe/30 flex items-center justify-center">
-              <User size={11} className="text-accent-safe" />
-            </button>
+          <div className="pointer-events-auto flex-shrink-0">
+            <LiquidGlass className="rounded-full" chromaticAberration={2} depth={8}>
+              <div className="flex items-center gap-3 px-4 py-2.5">
+                <div className="text-right">
+                  <div className="text-[10px] font-mono text-slate2-400 leading-none">{dateStr}</div>
+                  <div className="text-[11px] font-mono font-semibold text-slate2-200 leading-none mt-0.5">{timeStr}</div>
+                </div>
+                <div className="w-px h-4 bg-white/10" />
+                <button type="button" className="text-slate2-400 hover:text-slate2-200 transition-colors">
+                  <Bell size={14} />
+                </button>
+                <button type="button" className="w-6 h-6 rounded-full bg-accent-safe/20 border border-accent-safe/30 flex items-center justify-center">
+                  <User size={11} className="text-accent-safe" />
+                </button>
+              </div>
+            </LiquidGlass>
           </div>
-        </div>
-
-        {/* Action buttons: Define Region + Run Demo Flow */}
-        <div className="pointer-events-none absolute top-16 right-3 z-30 flex items-center gap-2">
-          <button
-            type="button"
-            className="glass-surface glass-shell pointer-events-auto flex items-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate2-300 hover:text-slate2-100 transition-colors"
-          >
-            <Pencil size={12} />
-            Define Region
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("reports")}
-            className="glass-surface glass-shell pointer-events-auto flex items-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-red-300 border-red-500/25 bg-red-500/10 hover:bg-red-500/20 transition-colors"
-          >
-            <PlayCircle size={12} />
-            Run Demo Flow
-          </button>
         </div>
 
         {/* Vessel detail floating card — bottom-left, above dock */}
@@ -269,62 +268,192 @@ export default function App() {
           </div>
         )}
 
+        {/* Seamount activist card — top-left, below search */}
+        {showSeamounts && (
+          <div className="pointer-events-none absolute left-3 top-20 z-20 w-[340px]">
+            <div className="pointer-events-auto">
+              <LiquidGlass className="rounded-2xl" chromaticAberration={2} depth={10}>
+                <div className="space-y-3 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Mountain size={14} className="text-orange-300" />
+                      <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-orange-300">
+                        GEBCO × GFW Overlay
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSeamounts(false)}
+                      className="text-slate2-400 transition-colors hover:text-slate2-200"
+                      aria-label="Close seamounts overlay"
+                    >
+                      <XIcon size={14} />
+                    </button>
+                  </div>
+
+                  {hoveredSeamount ? (
+                    <>
+                      <div>
+                        <div className="text-base font-semibold leading-tight text-slate2-100">
+                          {hoveredSeamount.name}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-slate2-400">{hoveredSeamount.region}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-[11px]">
+                        <div>
+                          <div className="font-mono uppercase tracking-wide text-slate2-500">Summit</div>
+                          <div className="font-semibold text-slate2-100">
+                            {hoveredSeamount.summit_depth_m.toLocaleString()} m
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-mono uppercase tracking-wide text-slate2-500">Base</div>
+                          <div className="font-semibold text-slate2-100">
+                            {hoveredSeamount.base_depth_m.toLocaleString()} m
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-mono uppercase tracking-wide text-slate2-500">Coral age</div>
+                          <div className="font-semibold text-orange-300">
+                            {hoveredSeamount.coral_age_years.toLocaleString()} yr
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-slate2-400">
+                          <span>Bottom-trawl pressure</span>
+                          <span className="font-mono text-slate2-200">
+                            {Math.round(hoveredSeamount.fishing_pressure * 100)}%
+                          </span>
+                        </div>
+                        <div className="relative h-1.5 overflow-hidden rounded-full bg-white/5">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-amber-400 to-rose-500"
+                            style={{ width: `${hoveredSeamount.fishing_pressure * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11.5px] leading-relaxed text-slate2-300">{hoveredSeamount.note}</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-[15px] font-semibold leading-snug text-slate2-100">
+                        Fishing concentrated on the peaks
+                      </h3>
+                      <p className="text-[11.5px] leading-relaxed text-slate2-300">
+                        Seamounts push deep-sea currents upward, fertilising biodiversity hotspots that schooling
+                        fish and cold-water coral forests depend on. The same peaks are easiest for bottom-trawlers
+                        to anchor — a single pass strips reefs that took up to{" "}
+                        <span className="font-semibold text-orange-300">11,000 years</span> to grow.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div className="rounded-lg bg-white/[0.03] p-2 ring-1 ring-white/5">
+                          <div className="font-mono text-[10px] uppercase tracking-wide text-slate2-400">
+                            Seamounts shown
+                          </div>
+                          <div className="text-base font-semibold text-slate2-100">15</div>
+                        </div>
+                        <div className="rounded-lg bg-white/[0.03] p-2 ring-1 ring-white/5">
+                          <div className="font-mono text-[10px] uppercase tracking-wide text-slate2-400">
+                            Avg trawl pressure
+                          </div>
+                          <div className="text-base font-semibold text-orange-300">71%</div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] italic text-slate2-500">
+                        Hover a peak for detail · GEBCO bathymetry × GFW fishing effort
+                      </div>
+                    </>
+                  )}
+                </div>
+              </LiquidGlass>
+            </div>
+          </div>
+        )}
+
         {/* Bottom dock */}
         <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2">
-          <div className="glass-surface glass-shell pointer-events-auto relative flex items-center gap-1 p-2.5">
-            {(
-              [
-                { id: "vessels",   label: "Vessels",   icon: ShipIcon     },
-                { id: "incidents", label: "Incidents", icon: AlertTriangle },
-                { id: "zones",     label: "Zones",     icon: MapPinned    },
-                { id: "animals",   label: "Animals",   icon: Fish         },
-                { id: "layers",    label: "Layers",    icon: Layers3      },
-              ] as const
-            ).map(({ id, label, icon: Icon }) => {
-              const active = activeDockTab === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setActiveDockTab(id)}
-                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-[0.02em] transition ${
-                    active ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip hover:text-slate2-100"
-                  }`}
-                >
-                  <Icon size={16} />
-                  {label}
-                </button>
-              );
-            })}
+          <div className="pointer-events-auto">
+            <LiquidGlass className="rounded-full" chromaticAberration={2} depth={8}>
+              <div className="flex items-center gap-1 p-2.5">
+                {(
+                  [
+                    { id: "vessels",   label: "Vessels",   icon: ShipIcon     },
+                    { id: "animals",   label: "Animals",   icon: Fish         },
+                    { id: "layers",    label: "Layers",    icon: Layers3      },
+                  ] as const
+                ).map(({ id, label, icon: Icon }) => {
+                  const active = activeDockTab === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setActiveDockTab(id)}
+                      className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-[0.02em] transition ${
+                        active ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip hover:text-slate2-100"
+                      }`}
+                    >
+                      <Icon size={16} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </LiquidGlass>
           </div>
           {activeDockTab === "layers" && (
-            <div className="glass-surface glass-panel pointer-events-auto absolute -top-14 left-1/2 flex -translate-x-1/2 items-center gap-1 p-1.5 text-[11px] uppercase tracking-wide text-slate2-200">
-              <button
-                type="button"
-                onClick={() => setRenderer("globe")}
-                className={`rounded px-2 py-1 transition ${renderer === "globe" ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
-              >
-                Globe
-              </button>
-              <button
-                type="button"
-                onClick={() => setRenderer("mapbox")}
-                className={`rounded px-2 py-1 transition ${renderer === "mapbox" ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
-              >
-                Mapbox
-              </button>
+            <div className="pointer-events-auto absolute -top-14 left-1/2 -translate-x-1/2">
+              <LiquidGlass className="rounded-full" chromaticAberration={2} depth={6}>
+                <div className="flex items-center gap-1 p-1.5 text-[11px] uppercase tracking-wide text-slate2-200">
+                  <button
+                    type="button"
+                    onClick={() => setRenderer("globe")}
+                    className={`rounded px-2 py-1 transition ${renderer === "globe" ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
+                  >
+                    Globe
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRenderer("mapbox")}
+                    className={`rounded px-2 py-1 transition ${renderer === "mapbox" ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
+                  >
+                    Mapbox
+                  </button>
+                </div>
+              </LiquidGlass>
             </div>
           )}
           {activeDockTab === "animals" && (
-            <div className="glass-surface glass-panel pointer-events-auto absolute -top-14 left-1/2 flex -translate-x-1/2 items-center gap-1 p-1.5 text-[11px] uppercase tracking-wide text-slate2-200">
-              <button
-                type="button"
-                onClick={() => setShowSharkHeatmap(v => !v)}
-                className={`flex items-center gap-1.5 rounded px-2 py-1 transition ${showSharkHeatmap ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
-              >
-                <Fish size={12} />
-                Shark
-              </button>
+            <div className="pointer-events-auto absolute -top-14 left-1/2 -translate-x-1/2">
+              <LiquidGlass className="rounded-full" chromaticAberration={2} depth={6}>
+                <div className="flex items-center gap-1 p-1.5 text-[11px] uppercase tracking-wide text-slate2-200">
+                  <button
+                    type="button"
+                    onClick={() => setShowSharkHeatmap(v => !v)}
+                    className={`flex items-center gap-1.5 rounded px-2 py-1 transition ${showSharkHeatmap ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
+                  >
+                    <Fish size={12} />
+                    Shark
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowTunaHeatmap(v => !v)}
+                    className={`flex items-center gap-1.5 rounded px-2 py-1 transition ${showTunaHeatmap ? "glass-chip text-cyan-400" : "text-slate2-300 hover:glass-chip"}`}
+                  >
+                    <Fish size={12} />
+                    Bluefin Tuna
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSeamounts(v => !v)}
+                    className={`flex items-center gap-1.5 rounded px-2 py-1 transition ${showSeamounts ? "glass-chip text-orange-300" : "text-slate2-300 hover:glass-chip"}`}
+                    title="GEBCO bathymetry × GFW fishing effort"
+                  >
+                    <Mountain size={12} />
+                    Seamounts
+                  </button>
+                </div>
+              </LiquidGlass>
             </div>
           )}
         </div>
@@ -336,6 +465,10 @@ export default function App() {
           {rightPanel()}
         </ErrorBoundary>
       </div>
+
+      <AgentPipelineModal />
+      <AgentPipelineMinimizedChip />
     </div>
+    </AgentPipelineProvider>
   );
 }

@@ -131,7 +131,7 @@ export function CollapsiblePanel({
         )}
       </div>
       {open && (
-        <div className="max-h-[min(46vh,420px)] overflow-y-auto border-t border-white/12 px-3 py-2">
+        <div className="max-h-[min(46vh,420px)] overflow-y-auto scrollbar-themed border-t border-white/12 px-3 py-2">
           {children}
         </div>
       )}

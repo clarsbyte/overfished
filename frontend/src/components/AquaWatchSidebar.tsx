@@ -2,7 +2,6 @@ import {
     LayoutDashboard,
     AlertTriangle,
     Ship,
-    Bell,
     BarChart3,
     FileText,
     Settings,
@@ -45,7 +44,6 @@ export function AquaWatchSidebar({ activeView, onNavigate, totalVessels, isOnlin
                     <NavItem icon={LayoutDashboard} label="Overview" active={activeView === "overview"} onClick={() => onNavigate("overview")} />
                     <NavItem icon={AlertTriangle} label="Incidents" active={activeView === "incidents"} onClick={() => onNavigate("incidents")} />
                     <NavItem icon={Ship} label="Vessels" active={activeView === "vessels"} onClick={() => onNavigate("vessels")} />
-                    <NavItem icon={Bell} label="Alerts" active={false} onClick={() => onNavigate("incidents")} />
                     <NavItem icon={BarChart3} label="Analytics" active={activeView === "analytics"} onClick={() => onNavigate("analytics")} />
                     <NavItem icon={FileText} label="Reports" active={activeView === "reports"} onClick={() => onNavigate("reports")} />
                     <NavItem icon={Settings} label="Settings" active={activeView === "settings"} onClick={() => onNavigate("settings")} />
