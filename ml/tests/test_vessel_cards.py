@@ -96,6 +96,33 @@ def test_build_vessel_cards_writes_json_with_local_image(tmp_path: Path) -> None
     assert payload["2"]["image_source_url"] == "https://example.com/b.jpg"
 
 
+def test_build_vessel_cards_includes_jpg_on_disk_not_in_csv(tmp_path: Path) -> None:
+    """Pool-assigned MMSIs get a minimal card so the frontend can show image_path."""
+    csv = tmp_path / "enriched.csv"
+    pd.DataFrame([{"mmsi": "111111111", "vessel_name": "ONLY_CSV", "is_high_risk": False}]).to_csv(
+        csv, index=False
+    )
+    cache = tmp_path / "vessel_image_cache.json"
+    cache.write_text(json.dumps({}), encoding="utf-8")
+    image_dir = tmp_path / "vessel_images"
+    image_dir.mkdir()
+    (image_dir / "111111111.jpg").write_bytes(_make_jpeg_bytes())
+    (image_dir / "222222222.jpg").write_bytes(_make_jpeg_bytes(color=(10, 100, 200)))
+    output = tmp_path / "vessel_cards.json"
+    summary = build_vessel_cards(
+        input_csv=csv,
+        cache_path=cache,
+        image_dir=image_dir,
+        output_path=output,
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert summary.cards_written == 2
+    assert "222222222" in payload
+    assert payload["222222222"]["image_path"] == "/data/vessel_images/222222222.jpg"
+    assert payload["222222222"]["mmsi"] == "222222222"
+    assert "name" not in payload["222222222"]
+
+
 def test_download_vessel_images_writes_resized_jpegs(tmp_path: Path) -> None:
     cache = tmp_path / "cache.json"
     cache.write_text(

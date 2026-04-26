@@ -1,4 +1,8 @@
 {
+  "224110200": {
+    "image_path": "/data/vessel_images/224110200.jpg",
+    "mmsi": "224110200"
+  },
   "231053000": {
     "duration_hours": 190.12,
     "flag": "FRO",
@@ -8,6 +12,10 @@
     "name": "ARCTIC VIKING",
     "risk": "safe",
     "vessel_type": "fishing"
+  },
+  "242001050": {
+    "image_path": "/data/vessel_images/242001050.jpg",
+    "mmsi": "242001050"
   },
   "244373000": {
     "duration_hours": 170.86,
@@ -28,6 +36,18 @@
     "name": "CISEMAIR",
     "risk": "high_risk",
     "vessel_type": "fishing"
+  },
+  "316002310": {
+    "image_path": "/data/vessel_images/316002310.jpg",
+    "mmsi": "316002310"
+  },
+  "316002311": {
+    "image_path": "/data/vessel_images/316002311.jpg",
+    "mmsi": "316002311"
+  },
+  "352000200": {
+    "image_path": "/data/vessel_images/352000200.jpg",
+    "mmsi": "352000200"
   },
   "412217999": {
     "duration_hours": 327.13,
@@ -79,6 +99,22 @@
     "risk": "high_risk",
     "vessel_type": "fishing"
   },
+  "412765001": {
+    "image_path": "/data/vessel_images/412765001.jpg",
+    "mmsi": "412765001"
+  },
+  "412765002": {
+    "image_path": "/data/vessel_images/412765002.jpg",
+    "mmsi": "412765002"
+  },
+  "412765003": {
+    "image_path": "/data/vessel_images/412765003.jpg",
+    "mmsi": "412765003"
+  },
+  "412765004": {
+    "image_path": "/data/vessel_images/412765004.jpg",
+    "mmsi": "412765004"
+  },
   "432448000": {
     "duration_hours": 305.55,
     "flag": "JPN",
@@ -89,6 +125,54 @@
     "risk": "safe",
     "vessel_type": "fishing"
   },
+  "440112050": {
+    "image_path": "/data/vessel_images/440112050.jpg",
+    "mmsi": "440112050"
+  },
+  "440112055": {
+    "image_path": "/data/vessel_images/440112055.jpg",
+    "mmsi": "440112055"
+  },
+  "501010001": {
+    "image_path": "/data/vessel_images/501010001.jpg",
+    "mmsi": "501010001"
+  },
+  "503001120": {
+    "image_path": "/data/vessel_images/503001120.jpg",
+    "mmsi": "503001120"
+  },
+  "503001121": {
+    "image_path": "/data/vessel_images/503001121.jpg",
+    "mmsi": "503001121"
+  },
+  "563210010": {
+    "image_path": "/data/vessel_images/563210010.jpg",
+    "mmsi": "563210010"
+  },
+  "563210011": {
+    "image_path": "/data/vessel_images/563210011.jpg",
+    "mmsi": "563210011"
+  },
+  "636190200": {
+    "image_path": "/data/vessel_images/636190200.jpg",
+    "mmsi": "636190200"
+  },
+  "636190201": {
+    "image_path": "/data/vessel_images/636190201.jpg",
+    "mmsi": "636190201"
+  },
+  "657143010": {
+    "image_path": "/data/vessel_images/657143010.jpg",
+    "mmsi": "657143010"
+  },
+  "657143011": {
+    "image_path": "/data/vessel_images/657143011.jpg",
+    "mmsi": "657143011"
+  },
+  "657143012": {
+    "image_path": "/data/vessel_images/657143012.jpg",
+    "mmsi": "657143012"
+  },
   "657265600": {
     "duration_hours": 228.16,
     "flag": "NGA",
@@ -98,5 +182,465 @@
     "name": "BANARLY X",
     "risk": "high_risk",
     "vessel_type": "fishing"
+  },
+  "725003400": {
+    "image_path": "/data/vessel_images/725003400.jpg",
+    "mmsi": "725003400"
+  },
+  "725003401": {
+    "image_path": "/data/vessel_images/725003401.jpg",
+    "mmsi": "725003401"
+  },
+  "725003402": {
+    "image_path": "/data/vessel_images/725003402.jpg",
+    "mmsi": "725003402"
+  },
+  "725003410": {
+    "image_path": "/data/vessel_images/725003410.jpg",
+    "mmsi": "725003410"
+  },
+  "999000001": {
+    "image_path": "/data/vessel_images/999000001.jpg",
+    "mmsi": "999000001"
+  },
+  "999000002": {
+    "image_path": "/data/vessel_images/999000002.jpg",
+    "mmsi": "999000002"
+  },
+  "999000003": {
+    "image_path": "/data/vessel_images/999000003.jpg",
+    "mmsi": "999000003"
+  },
+  "999000004": {
+    "image_path": "/data/vessel_images/999000004.jpg",
+    "mmsi": "999000004"
+  },
+  "999000005": {
+    "image_path": "/data/vessel_images/999000005.jpg",
+    "mmsi": "999000005"
+  },
+  "999000006": {
+    "image_path": "/data/vessel_images/999000006.jpg",
+    "mmsi": "999000006"
+  },
+  "999000007": {
+    "image_path": "/data/vessel_images/999000007.jpg",
+    "mmsi": "999000007"
+  },
+  "999000008": {
+    "image_path": "/data/vessel_images/999000008.jpg",
+    "mmsi": "999000008"
+  },
+  "999000009": {
+    "image_path": "/data/vessel_images/999000009.jpg",
+    "mmsi": "999000009"
+  },
+  "999000010": {
+    "image_path": "/data/vessel_images/999000010.jpg",
+    "mmsi": "999000010"
+  },
+  "999000011": {
+    "image_path": "/data/vessel_images/999000011.jpg",
+    "mmsi": "999000011"
+  },
+  "999000012": {
+    "image_path": "/data/vessel_images/999000012.jpg",
+    "mmsi": "999000012"
+  },
+  "999000013": {
+    "image_path": "/data/vessel_images/999000013.jpg",
+    "mmsi": "999000013"
+  },
+  "999000014": {
+    "image_path": "/data/vessel_images/999000014.jpg",
+    "mmsi": "999000014"
+  },
+  "999000015": {
+    "image_path": "/data/vessel_images/999000015.jpg",
+    "mmsi": "999000015"
+  },
+  "999000016": {
+    "image_path": "/data/vessel_images/999000016.jpg",
+    "mmsi": "999000016"
+  },
+  "999000017": {
+    "image_path": "/data/vessel_images/999000017.jpg",
+    "mmsi": "999000017"
+  },
+  "999000018": {
+    "image_path": "/data/vessel_images/999000018.jpg",
+    "mmsi": "999000018"
+  },
+  "999000019": {
+    "image_path": "/data/vessel_images/999000019.jpg",
+    "mmsi": "999000019"
+  },
+  "999000020": {
+    "image_path": "/data/vessel_images/999000020.jpg",
+    "mmsi": "999000020"
+  },
+  "999000021": {
+    "image_path": "/data/vessel_images/999000021.jpg",
+    "mmsi": "999000021"
+  },
+  "999000022": {
+    "image_path": "/data/vessel_images/999000022.jpg",
+    "mmsi": "999000022"
+  },
+  "999000023": {
+    "image_path": "/data/vessel_images/999000023.jpg",
+    "mmsi": "999000023"
+  },
+  "999000024": {
+    "image_path": "/data/vessel_images/999000024.jpg",
+    "mmsi": "999000024"
+  },
+  "999000025": {
+    "image_path": "/data/vessel_images/999000025.jpg",
+    "mmsi": "999000025"
+  },
+  "999000026": {
+    "image_path": "/data/vessel_images/999000026.jpg",
+    "mmsi": "999000026"
+  },
+  "999000027": {
+    "image_path": "/data/vessel_images/999000027.jpg",
+    "mmsi": "999000027"
+  },
+  "999000028": {
+    "image_path": "/data/vessel_images/999000028.jpg",
+    "mmsi": "999000028"
+  },
+  "999000029": {
+    "image_path": "/data/vessel_images/999000029.jpg",
+    "mmsi": "999000029"
+  },
+  "999000030": {
+    "image_path": "/data/vessel_images/999000030.jpg",
+    "mmsi": "999000030"
+  },
+  "999000031": {
+    "image_path": "/data/vessel_images/999000031.jpg",
+    "mmsi": "999000031"
+  },
+  "999000032": {
+    "image_path": "/data/vessel_images/999000032.jpg",
+    "mmsi": "999000032"
+  },
+  "999000033": {
+    "image_path": "/data/vessel_images/999000033.jpg",
+    "mmsi": "999000033"
+  },
+  "999000034": {
+    "image_path": "/data/vessel_images/999000034.jpg",
+    "mmsi": "999000034"
+  },
+  "999000035": {
+    "image_path": "/data/vessel_images/999000035.jpg",
+    "mmsi": "999000035"
+  },
+  "999000036": {
+    "image_path": "/data/vessel_images/999000036.jpg",
+    "mmsi": "999000036"
+  },
+  "999000037": {
+    "image_path": "/data/vessel_images/999000037.jpg",
+    "mmsi": "999000037"
+  },
+  "999000038": {
+    "image_path": "/data/vessel_images/999000038.jpg",
+    "mmsi": "999000038"
+  },
+  "999000039": {
+    "image_path": "/data/vessel_images/999000039.jpg",
+    "mmsi": "999000039"
+  },
+  "999000040": {
+    "image_path": "/data/vessel_images/999000040.jpg",
+    "mmsi": "999000040"
+  },
+  "999000041": {
+    "image_path": "/data/vessel_images/999000041.jpg",
+    "mmsi": "999000041"
+  },
+  "999000042": {
+    "image_path": "/data/vessel_images/999000042.jpg",
+    "mmsi": "999000042"
+  },
+  "999000043": {
+    "image_path": "/data/vessel_images/999000043.jpg",
+    "mmsi": "999000043"
+  },
+  "999000044": {
+    "image_path": "/data/vessel_images/999000044.jpg",
+    "mmsi": "999000044"
+  },
+  "999000045": {
+    "image_path": "/data/vessel_images/999000045.jpg",
+    "mmsi": "999000045"
+  },
+  "999000046": {
+    "image_path": "/data/vessel_images/999000046.jpg",
+    "mmsi": "999000046"
+  },
+  "999000047": {
+    "image_path": "/data/vessel_images/999000047.jpg",
+    "mmsi": "999000047"
+  },
+  "999000048": {
+    "image_path": "/data/vessel_images/999000048.jpg",
+    "mmsi": "999000048"
+  },
+  "999000049": {
+    "image_path": "/data/vessel_images/999000049.jpg",
+    "mmsi": "999000049"
+  },
+  "999000050": {
+    "image_path": "/data/vessel_images/999000050.jpg",
+    "mmsi": "999000050"
+  },
+  "999000051": {
+    "image_path": "/data/vessel_images/999000051.jpg",
+    "mmsi": "999000051"
+  },
+  "999000052": {
+    "image_path": "/data/vessel_images/999000052.jpg",
+    "mmsi": "999000052"
+  },
+  "999000053": {
+    "image_path": "/data/vessel_images/999000053.jpg",
+    "mmsi": "999000053"
+  },
+  "999000054": {
+    "image_path": "/data/vessel_images/999000054.jpg",
+    "mmsi": "999000054"
+  },
+  "999000055": {
+    "image_path": "/data/vessel_images/999000055.jpg",
+    "mmsi": "999000055"
+  },
+  "999000056": {
+    "image_path": "/data/vessel_images/999000056.jpg",
+    "mmsi": "999000056"
+  },
+  "999000057": {
+    "image_path": "/data/vessel_images/999000057.jpg",
+    "mmsi": "999000057"
+  },
+  "999000058": {
+    "image_path": "/data/vessel_images/999000058.jpg",
+    "mmsi": "999000058"
+  },
+  "999000059": {
+    "image_path": "/data/vessel_images/999000059.jpg",
+    "mmsi": "999000059"
+  },
+  "999000060": {
+    "image_path": "/data/vessel_images/999000060.jpg",
+    "mmsi": "999000060"
+  },
+  "999000061": {
+    "image_path": "/data/vessel_images/999000061.jpg",
+    "mmsi": "999000061"
+  },
+  "999000062": {
+    "image_path": "/data/vessel_images/999000062.jpg",
+    "mmsi": "999000062"
+  },
+  "999000063": {
+    "image_path": "/data/vessel_images/999000063.jpg",
+    "mmsi": "999000063"
+  },
+  "999000064": {
+    "image_path": "/data/vessel_images/999000064.jpg",
+    "mmsi": "999000064"
+  },
+  "999000065": {
+    "image_path": "/data/vessel_images/999000065.jpg",
+    "mmsi": "999000065"
+  },
+  "999000066": {
+    "image_path": "/data/vessel_images/999000066.jpg",
+    "mmsi": "999000066"
+  },
+  "999000067": {
+    "image_path": "/data/vessel_images/999000067.jpg",
+    "mmsi": "999000067"
+  },
+  "999000068": {
+    "image_path": "/data/vessel_images/999000068.jpg",
+    "mmsi": "999000068"
+  },
+  "999000069": {
+    "image_path": "/data/vessel_images/999000069.jpg",
+    "mmsi": "999000069"
+  },
+  "999000070": {
+    "image_path": "/data/vessel_images/999000070.jpg",
+    "mmsi": "999000070"
+  },
+  "999000071": {
+    "image_path": "/data/vessel_images/999000071.jpg",
+    "mmsi": "999000071"
+  },
+  "999000072": {
+    "image_path": "/data/vessel_images/999000072.jpg",
+    "mmsi": "999000072"
+  },
+  "999000073": {
+    "image_path": "/data/vessel_images/999000073.jpg",
+    "mmsi": "999000073"
+  },
+  "999000074": {
+    "image_path": "/data/vessel_images/999000074.jpg",
+    "mmsi": "999000074"
+  },
+  "999000075": {
+    "image_path": "/data/vessel_images/999000075.jpg",
+    "mmsi": "999000075"
+  },
+  "999000076": {
+    "image_path": "/data/vessel_images/999000076.jpg",
+    "mmsi": "999000076"
+  },
+  "999000077": {
+    "image_path": "/data/vessel_images/999000077.jpg",
+    "mmsi": "999000077"
+  },
+  "999000078": {
+    "image_path": "/data/vessel_images/999000078.jpg",
+    "mmsi": "999000078"
+  },
+  "999000079": {
+    "image_path": "/data/vessel_images/999000079.jpg",
+    "mmsi": "999000079"
+  },
+  "999000080": {
+    "image_path": "/data/vessel_images/999000080.jpg",
+    "mmsi": "999000080"
+  },
+  "999000081": {
+    "image_path": "/data/vessel_images/999000081.jpg",
+    "mmsi": "999000081"
+  },
+  "999000082": {
+    "image_path": "/data/vessel_images/999000082.jpg",
+    "mmsi": "999000082"
+  },
+  "999000083": {
+    "image_path": "/data/vessel_images/999000083.jpg",
+    "mmsi": "999000083"
+  },
+  "999000084": {
+    "image_path": "/data/vessel_images/999000084.jpg",
+    "mmsi": "999000084"
+  },
+  "999000085": {
+    "image_path": "/data/vessel_images/999000085.jpg",
+    "mmsi": "999000085"
+  },
+  "999000086": {
+    "image_path": "/data/vessel_images/999000086.jpg",
+    "mmsi": "999000086"
+  },
+  "999000087": {
+    "image_path": "/data/vessel_images/999000087.jpg",
+    "mmsi": "999000087"
+  },
+  "999000088": {
+    "image_path": "/data/vessel_images/999000088.jpg",
+    "mmsi": "999000088"
+  },
+  "999000089": {
+    "image_path": "/data/vessel_images/999000089.jpg",
+    "mmsi": "999000089"
+  },
+  "999000090": {
+    "image_path": "/data/vessel_images/999000090.jpg",
+    "mmsi": "999000090"
+  },
+  "999000091": {
+    "image_path": "/data/vessel_images/999000091.jpg",
+    "mmsi": "999000091"
+  },
+  "999000092": {
+    "image_path": "/data/vessel_images/999000092.jpg",
+    "mmsi": "999000092"
+  },
+  "999000093": {
+    "image_path": "/data/vessel_images/999000093.jpg",
+    "mmsi": "999000093"
+  },
+  "999000094": {
+    "image_path": "/data/vessel_images/999000094.jpg",
+    "mmsi": "999000094"
+  },
+  "999000095": {
+    "image_path": "/data/vessel_images/999000095.jpg",
+    "mmsi": "999000095"
+  },
+  "999000096": {
+    "image_path": "/data/vessel_images/999000096.jpg",
+    "mmsi": "999000096"
+  },
+  "999000097": {
+    "image_path": "/data/vessel_images/999000097.jpg",
+    "mmsi": "999000097"
+  },
+  "999000098": {
+    "image_path": "/data/vessel_images/999000098.jpg",
+    "mmsi": "999000098"
+  },
+  "999000099": {
+    "image_path": "/data/vessel_images/999000099.jpg",
+    "mmsi": "999000099"
+  },
+  "999000100": {
+    "image_path": "/data/vessel_images/999000100.jpg",
+    "mmsi": "999000100"
+  },
+  "999000101": {
+    "image_path": "/data/vessel_images/999000101.jpg",
+    "mmsi": "999000101"
+  },
+  "999000102": {
+    "image_path": "/data/vessel_images/999000102.jpg",
+    "mmsi": "999000102"
+  },
+  "999000103": {
+    "image_path": "/data/vessel_images/999000103.jpg",
+    "mmsi": "999000103"
+  },
+  "999000104": {
+    "image_path": "/data/vessel_images/999000104.jpg",
+    "mmsi": "999000104"
+  },
+  "999000105": {
+    "image_path": "/data/vessel_images/999000105.jpg",
+    "mmsi": "999000105"
+  },
+  "999000106": {
+    "image_path": "/data/vessel_images/999000106.jpg",
+    "mmsi": "999000106"
+  },
+  "999000107": {
+    "image_path": "/data/vessel_images/999000107.jpg",
+    "mmsi": "999000107"
+  },
+  "999000108": {
+    "image_path": "/data/vessel_images/999000108.jpg",
+    "mmsi": "999000108"
+  },
+  "999000109": {
+    "image_path": "/data/vessel_images/999000109.jpg",
+    "mmsi": "999000109"
+  },
+  "999000110": {
+    "image_path": "/data/vessel_images/999000110.jpg",
+    "mmsi": "999000110"
+  },
+  "999000111": {
+    "image_path": "/data/vessel_images/999000111.jpg",
+    "mmsi": "999000111"
   }
 }

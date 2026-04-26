@@ -172,6 +172,18 @@ def _public_image_path(image_dir: Path, public_prefix: str, mmsi: str) -> str | 
     return None
 
 
+def _mmsi_keys_from_image_dir(image_dir: Path) -> set[str]:
+    """MMSI stems for existing ``{mmsi}.jpg`` (assign-pool / download output not in CSV/cache)."""
+    if not image_dir.is_dir():
+        return set()
+    out: set[str] = set()
+    for p in image_dir.glob("*.jpg"):
+        stem = p.stem.strip()
+        if stem and stem.isdigit():
+            out.add(stem)
+    return out
+
+
 def _summarize_with_anthropic(
     cards: list[VesselCard],
     *,
@@ -234,7 +246,11 @@ def build_vessel_cards(
     with_summaries: bool = False,
     summary_model: str = "claude-haiku-4-5-20251001",
 ) -> CardsSummary:
-    """Build ``vessel_cards.json`` from the enriched CSV + image cache + JPGs."""
+    """Build ``vessel_cards.json`` from the enriched CSV + image cache + JPGs on disk.
+
+    MMSIs are the union of CSV rows, ``vessel_image_cache.json`` keys, and any
+    ``{mmsi}.jpg`` already present under ``image_dir`` (e.g. from assign_ship_pool).
+    """
     load_dotenv()
     dataframe = pd.read_csv(input_csv)
     rows_total = len(dataframe)
@@ -253,8 +269,11 @@ def build_vessel_cards(
         except json.JSONDecodeError:
             cache = {}
 
+    disk_mmss = _mmsi_keys_from_image_dir(image_dir)
+    all_mmsi = sorted({*by_mmsi.keys(), *cache.keys(), *disk_mmss})
+
     cards: list[VesselCard] = []
-    for mmsi in sorted({*by_mmsi.keys(), *cache.keys()}):
+    for mmsi in all_mmsi:
         row = by_mmsi.get(mmsi, {"mmsi": mmsi})
         image_path = _public_image_path(image_dir, public_image_prefix, mmsi)
         image_url = cache.get(mmsi)

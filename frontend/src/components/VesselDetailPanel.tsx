@@ -35,23 +35,12 @@ function RiskBadge({ risk }: { risk?: Risk }) {
 
 interface ImgState {
   src: string | null;
-  stage: "local" | "remote" | "placeholder" | "missing";
+  stage: "local" | "remote" | "missing";
 }
 
-/** Deterministic stock photo per MMSI (not the vessel). Requires network during demo. */
-function picsumPlaceholderUrl(mmsi: string): string {
-  const seed = encodeURIComponent(`vessel-${mmsi}`);
-  return `https://picsum.photos/seed/${seed}/800/480`;
-}
-
-function resolveImageState(
-  local: string | undefined,
-  remote: string | undefined,
-  mmsi: string | undefined,
-): ImgState {
+function resolveImageState(local: string | undefined, remote: string | undefined): ImgState {
   if (local) return { src: local, stage: "local" };
   if (remote) return { src: remote, stage: "remote" };
-  if (mmsi) return { src: picsumPlaceholderUrl(mmsi), stage: "placeholder" };
   return { src: null, stage: "missing" };
 }
 
@@ -61,9 +50,7 @@ export function VesselDetailPanel({ ship, onClose, onRequestAgent }: Props) {
   const localUrl = card?.image_path;
   const remoteUrl = card?.image_source_url;
 
-  const [img, setImg] = useState<ImgState>(() =>
-    resolveImageState(localUrl, remoteUrl, ship?.mmsi),
-  );
+  const [img, setImg] = useState<ImgState>(() => resolveImageState(localUrl, remoteUrl));
   const lastKeyRef = useRef<string>("");
 
   useEffect(() => {
@@ -71,7 +58,7 @@ export function VesselDetailPanel({ ship, onClose, onRequestAgent }: Props) {
     const key = `${ship.mmsi}|${localUrl ?? ""}|${remoteUrl ?? ""}`;
     if (key === lastKeyRef.current) return;
     lastKeyRef.current = key;
-    setImg(resolveImageState(localUrl, remoteUrl, ship.mmsi));
+    setImg(resolveImageState(localUrl, remoteUrl));
   }, [ship, localUrl, remoteUrl]);
 
   const notify = useMutation<NotifyPortResponse, Error, void>({
@@ -101,12 +88,6 @@ export function VesselDetailPanel({ ship, onClose, onRequestAgent }: Props) {
     setImg((prev) => {
       if (prev.stage === "local" && remoteUrl) {
         return { src: remoteUrl, stage: "remote" };
-      }
-      if (prev.stage === "local" && !remoteUrl && ship.mmsi) {
-        return { src: picsumPlaceholderUrl(ship.mmsi), stage: "placeholder" };
-      }
-      if (prev.stage === "remote" && ship.mmsi) {
-        return { src: picsumPlaceholderUrl(ship.mmsi), stage: "placeholder" };
       }
       return { src: null, stage: "missing" };
     });
@@ -154,21 +135,14 @@ export function VesselDetailPanel({ ship, onClose, onRequestAgent }: Props) {
 
         <div className="overflow-hidden rounded border border-ink-800 bg-ink-900">
           {img.src ? (
-            <>
-              <img
-                key={img.src}
-                src={img.src}
-                alt={`${name} (MMSI ${ship.mmsi})`}
-                onError={handleImgError}
-                loading="lazy"
-                className="block h-44 w-full object-cover"
-              />
-              {img.stage === "placeholder" && (
-                <p className="border-t border-ink-800 bg-ink-950 px-2 py-1 text-center text-[10px] text-slate2-500">
-                  Placeholder image (not this vessel)
-                </p>
-              )}
-            </>
+            <img
+              key={img.src}
+              src={img.src}
+              alt={`${name} (MMSI ${ship.mmsi})`}
+              onError={handleImgError}
+              loading="lazy"
+              className="block h-44 w-full object-cover"
+            />
           ) : (
             <div className="flex h-44 w-full flex-col items-center justify-center gap-1 bg-ink-900 text-slate2-500">
               <ImageOff size={24} />
