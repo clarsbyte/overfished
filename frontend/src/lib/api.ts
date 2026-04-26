@@ -1,3 +1,4 @@
+import type { FeatureCollection } from "geojson";
 import type {
   CaseFile,
   DocumentArtifact,
@@ -11,7 +12,46 @@ import type {
   VesselEvent,
 } from "@/types/schemas";
 
-const BASE = (import.meta.env.VITE_API_URL as string) ?? "/api";
+export type Risk = "safe" | "suspect" | "high_risk" | "confirmed_iuu";
+
+export interface GlobalVesselTrack {
+  mmsi: string;
+  name: string;
+  flag: string;
+  risk: Risk;
+  points: [number, number][];
+}
+
+/** Empty or unset `VITE_API_URL` → same-origin `/api` (Vite proxy in dev). */
+function resolveDemoApiBase(): string {
+  const raw = import.meta.env.VITE_API_URL;
+  if (raw == null || String(raw).trim() === "") return "/api";
+  return String(raw).replace(/\/$/, "");
+}
+
+const BASE = resolveDemoApiBase();
+
+export interface NotifyPortResponse {
+  port: { name: string; un_locode: string; lat: number; lon: number };
+  call: { call_id: string; status: string; recording_url: string };
+  predictions: { name: string; un_locode: string; lat: number; lon: number; weight: number }[];
+}
+
+export type DemoSpecies = "cod" | "salmon" | "trout";
+
+export interface SpeciesExposureRegion {
+  region_id: string;
+  name: string;
+  risk: Risk;
+  species_note: string;
+}
+
+export interface SpeciesFishingExposureResponse {
+  species: string;
+  disclaimer: string;
+  regions: SpeciesExposureRegion[];
+  geojson: FeatureCollection;
+}
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
@@ -47,6 +87,11 @@ export const api = {
   heatmap: (regionId = "galapagos") =>
     get<{ lat: number; lon: number; hours: number }[]>(`/heatmap?region_id=${regionId}`),
 
+  speciesFishingExposure: (species: DemoSpecies) =>
+    get<SpeciesFishingExposureResponse>(
+      `/species-fishing-exposure?species=${encodeURIComponent(species)}`,
+    ),
+
   // Worldwide hex-region risk overlay
   fisheryRegions: () =>
     get<
@@ -59,16 +104,7 @@ export const api = {
     >("/fishery-regions"),
 
   // Worldwide ambient vessel tracks
-  globalVesselTracks: () =>
-    get<
-      {
-        mmsi: string;
-        name: string;
-        flag: string;
-        risk: "confirmed_iuu" | "high_risk" | "suspect" | "safe";
-        points: [number, number][];
-      }[]
-    >("/vessel-tracks/global"),
+  globalVesselTracks: () => get<GlobalVesselTrack[]>("/vessel-tracks/global"),
 
   // Regulations / citations
   regulations: (regionId = "galapagos") => get<IUURule[]>(`/regulations?region_id=${regionId}`),
@@ -78,12 +114,7 @@ export const api = {
   caseFine: (caseId: string) => get<FineCalculation>(`/case/${caseId}/fine`),
   renderDocumentFamily: (caseId: string) => post<DocumentArtifact[]>(`/case/${caseId}/documents`),
   hailVessel: (caseId: string) => post<{ audio_url: string; script: string }>(`/case/${caseId}/hail`),
-  notifyPort: (caseId: string) =>
-    post<{
-      port: { name: string; un_locode: string; lat: number; lon: number };
-      call: { call_id: string; status: string; recording_url: string };
-      predictions: { name: string; un_locode: string; lat: number; lon: number; weight: number }[];
-    }>(`/case/${caseId}/notify-port`),
+  notifyPort: (caseId: string) => post<NotifyPortResponse>(`/case/${caseId}/notify-port`),
 };
 
 export type { CaseFile, Vessel, VesselDetection, VesselEvent, RegionContext, DocumentArtifact };

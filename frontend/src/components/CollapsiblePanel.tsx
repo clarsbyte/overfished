@@ -17,6 +17,8 @@ interface Props {
   minimizableToChip?: boolean;
   /** localStorage key suffix; defaults to `id` */
   chipStorageKey?: string;
+  /** Override the outer section className (replaces the default glass-surface glass-panel classes) */
+  className?: string;
 }
 
 const STATUS_RING: Record<PanelStatus, string> = {
@@ -40,6 +42,7 @@ export function CollapsiblePanel({
   children,
   minimizableToChip = false,
   chipStorageKey,
+  className,
 }: Props) {
   const chipKey = chipStorageKey ?? id;
 
@@ -90,7 +93,7 @@ export function CollapsiblePanel({
   }
 
   return (
-    <section className="glass-surface glass-panel pointer-events-auto w-full max-w-[360px] self-end">
+    <section className={className ?? "glass-surface glass-panel pointer-events-auto w-full max-w-[360px] self-end"}>
       <div className="flex w-full items-center gap-0">
         <button
           type="button"

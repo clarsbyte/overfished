@@ -113,12 +113,32 @@ def load_seed_ids(iso3: str, max_n: int) -> list[str]:
     return ids[:max_n]
 
 
+# Junk-title denylist — these are the page shell, not a law record. Reject so
+# we don't index navigation chrome as legal text.
+_JUNK_TITLES = {"fao.org", "faolex", "food and agriculture organization"}
+_MIN_USEFUL_TEXT_LEN = 500
+_NAV_CHROME_MARKERS = ("العربية", "中文", "Español", "Français", "FAOLEX Database")
+
+
+def _looks_like_chrome(title: str, text: str) -> bool:
+    """Heuristic: did we get the FAO page shell instead of a real record?"""
+    if title.strip().lower() in _JUNK_TITLES:
+        return True
+    if len(text) < _MIN_USEFUL_TEXT_LEN:
+        return True
+    # Page shell ≈ language switcher + a few links; real record body has prose.
+    nav_hits = sum(1 for marker in _NAV_CHROME_MARKERS if marker in text[:500])
+    return nav_hits >= 3
+
+
 def parse_detail_html(html: str, faolex_id: str, iso3: str, source: str) -> FaolexRecord | None:
     """Extract title, year, abstract, text from a FAOLEX detail page.
 
     The detail-page DOM is inconsistent across countries; we look for the
     most-stable signals (the document title, any year between 1950-2030 in
-    the metadata block, and concatenate the largest text container).
+    the metadata block, and concatenate the largest text container). Returns
+    None if the parse turned up only the FAO page shell — the detail page is
+    JS-rendered for many records, so without --render we often get nav chrome.
     """
     soup = BeautifulSoup(html, "lxml")
 
@@ -149,6 +169,8 @@ def parse_detail_html(html: str, faolex_id: str, iso3: str, source: str) -> Faol
         body_text = soup.get_text("\n", strip=True)
 
     if not title and not body_text:
+        return None
+    if _looks_like_chrome(title, body_text):
         return None
 
     return FaolexRecord(

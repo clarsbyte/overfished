@@ -5,7 +5,8 @@ import {
     Cloud,
     Layers,
     Plus,
-    Check
+    Check,
+    Waves,
 } from "lucide-react";
 import { useState } from "react";
 import { LiquidGlass } from "./LiquidGlass";
@@ -46,6 +47,19 @@ export function DashboardBottomBar() {
                                 checked={controls.showPoints}
                                 onChange={() => toggleLayer("showPoints")}
                             />
+
+                            <div className="px-2 pt-3 pb-2 mt-1 border-t border-white/5">
+                                <span className="text-[10px] font-bold text-blue-400/70 uppercase tracking-widest flex items-center gap-1.5">
+                                    <Waves className="w-3 h-3" />
+                                    Marine Life
+                                </span>
+                            </div>
+                            <ToggleItem
+                                label="Shark Distribution"
+                                checked={controls.showSharkHeatmap}
+                                onChange={() => toggleLayer("showSharkHeatmap")}
+                                accent="blue"
+                            />
                         </div>
                     </LiquidGlass>
                 </div>
@@ -84,7 +98,10 @@ function CategoryItem({ icon: Icon, label, active = false }: { icon: any, label:
     );
 }
 
-function ToggleItem({ label, checked, onChange }: { label: string, checked: boolean, onChange: () => void }) {
+function ToggleItem({ label, checked, onChange, accent = "cyan" }: { label: string, checked: boolean, onChange: () => void, accent?: "cyan" | "blue" }) {
+    const activeBox = accent === "blue"
+        ? "bg-blue-500 border-blue-400"
+        : "bg-cyan-500 border-cyan-400";
     return (
         <button
             onClick={onChange}
@@ -93,8 +110,7 @@ function ToggleItem({ label, checked, onChange }: { label: string, checked: bool
             <span className={`text-sm font-medium transition-colors ${checked ? 'text-slate-200' : 'text-slate-400 group-hover:text-slate-300'}`}>
                 {label}
             </span>
-            <div className={`w-4 h-4 rounded-[4px] border flex items-center justify-center transition-all ${checked ? 'bg-cyan-500 border-cyan-400' : 'border-slate-500 group-hover:border-slate-400'
-                }`}>
+            <div className={`w-4 h-4 rounded-[4px] border flex items-center justify-center transition-all ${checked ? activeBox : 'border-slate-500 group-hover:border-slate-400'}`}>
                 <Check className={`w-3 h-3 text-[10px] text-white transition-opacity ${checked ? 'opacity-100' : 'opacity-0'}`} strokeWidth={3} />
             </div>
         </button>

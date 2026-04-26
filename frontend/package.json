@@ -13,23 +13,31 @@
     "typecheck": "npm run codegen && tsc --noEmit && git -C .. diff --exit-code -- frontend/src/types/schemas.ts"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
     "@tanstack/react-query": "^5.59.0",
     "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
     "globe.gl": "^2.45.3",
     "lucide-react": "^0.452.0",
     "mapbox-gl": "^3.22.0",
     "react": "^18.3.1",
+    "react-countup": "^6.5.3",
     "react-dom": "^18.3.1",
+    "react-globe.gl": "^2.37.1",
     "react-map-gl": "^8.1.1",
-    "tailwind-merge": "^2.5.4"
+    "shapefile": "^0.6.6",
+    "tailwind-merge": "^2.5.4",
+    "three": "^0.169.0"
   },
   "devDependencies": {
+    "@rollup/pluginutils": "^5.3.0",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^22.7.4",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "esbuild": "^0.28.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "tailwindcss-animate": "^1.0.7",

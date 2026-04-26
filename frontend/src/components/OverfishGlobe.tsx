@@ -26,7 +26,7 @@
  */
 
 import { api } from "@/lib/api";
-import { whenLandMaskReady } from "@/lib/landMask";
+import { isLand, whenLandMaskReady } from "@/lib/landMask";
 import { generateRoutes } from "@/lib/proceduralRoutes";
 import type { Vessel } from "@/types/schemas";
 import { useQuery } from "@tanstack/react-query";
@@ -44,7 +44,7 @@ import {
   useAnimatedFleet,
 } from "./useAnimatedFleet";
 import { useDrawController } from "./useDrawController";
-import { makeLightweightVesselMesh, makeVesselMesh, preloadVesselModel } from "./vesselMesh";
+import { makeLightweightVesselMesh } from "./vesselMesh";
 import { useGlobeControlsContext } from "./GlobeControlsContext";
 
 export interface PortCall {
@@ -86,6 +86,13 @@ export interface LayerOverrides {
   showHeatmap?: boolean;
   showPaths?: boolean;
   flightCount?: number;
+  showSharkHeatmap?: boolean;
+}
+
+interface SharkPoint {
+  lat: number;
+  lng: number;
+  weight: number;
 }
 
 interface Props {
@@ -125,6 +132,11 @@ export function OverfishGlobe({
   // Live-tunable controls (leva panel mounted in main.tsx).
   const controls = useGlobeControls();
   const { isUpdatingLayers } = useGlobeControlsContext();
+  const showVessels = layerOverrides?.showVessels ?? controls.showVessels;
+  const showHeatmap = layerOverrides?.showHeatmap ?? controls.showHeatmap;
+  const showPaths = layerOverrides?.showPaths ?? controls.showPaths;
+  const flightCount = layerOverrides?.flightCount ?? controls.flightCount;
+  const showSharkHeatmap = layerOverrides?.showSharkHeatmap ?? controls.showSharkHeatmap;
 
   useEffect(() => {
     if (!globeRef.current) return;
@@ -143,12 +155,6 @@ export function OverfishGlobe({
     const fill = new THREE.DirectionalLight(0xffffff, 0.6);
     fill.position.set(-150, 100, 50);
     scene.add(fill);
-
-    // Kick off GLTF load (no-op if no model file is present; falls back to
-    // the procedural ship until or unless a real GLTF resolves).
-    void preloadVesselModel().then((loaded) => {
-      if (loaded) setModelReady(true);
-    });
 
     return () => {
       scene.remove(hemi);
@@ -195,6 +201,101 @@ export function OverfishGlobe({
       return res.json() as Promise<{ lat: number; lng: number; flag: string | null; hours: number }[]>;
     },
   });
+
+  // ── Shark heatmap data ───────────────────────────────────────────────
+  const sharkQ = useQuery({
+    queryKey: ["sharkHeatmap"],
+    queryFn: async () => {
+      const res = await fetch("/shark-heatmap.json");
+      if (!res.ok) throw new Error("Failed to load shark data");
+      return res.json() as Promise<SharkPoint[]>;
+    },
+  });
+
+  // Render shark distribution as a Gaussian heatmap texture wrapped on a
+  // sphere slightly above the globe surface. Paints an equirectangular
+  // canvas (ocean-only, land-masked) and drapes it onto a Three.js sphere
+  // added directly to the scene.
+  useEffect(() => {
+    if (!globeRef.current) return;
+    const scene = globeRef.current.scene();
+
+    const removeExisting = () => {
+      const old = scene.getObjectByName("shark-heatmap-overlay");
+      if (old) {
+        scene.remove(old);
+        (old as THREE.Mesh).geometry.dispose();
+        ((old as THREE.Mesh).material as THREE.MeshBasicMaterial).map?.dispose();
+        ((old as THREE.Mesh).material as THREE.MeshBasicMaterial).dispose();
+      }
+    };
+
+    removeExisting();
+
+    if (!showSharkHeatmap || !sharkQ.data?.length) return;
+
+    let cancelled = false;
+
+    void whenLandMaskReady().then(() => {
+      if (cancelled) return;
+
+      // Filter out any points that sit on land
+      const oceanPts = sharkQ.data!.filter((p) => !isLand(p.lat, p.lng));
+
+      const W = 4096;
+      const H = 2048;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d")!;
+      ctx.globalCompositeOperation = "lighter";
+
+      for (const pt of oceanPts) {
+        const px = ((pt.lng + 180) / 360) * W;
+        const py = ((90 - pt.lat) / 180) * H;
+        const r = 25 + pt.weight * 30;
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
+        const a0 = 0.10 + pt.weight * 0.14;
+        const a1 = 0.04 + pt.weight * 0.06;
+        grad.addColorStop(0.0, `rgba(100, 240, 140, ${a0.toFixed(3)})`);
+        grad.addColorStop(0.4, `rgba(40, 180, 80, ${a1.toFixed(3)})`);
+        grad.addColorStop(0.75, `rgba(15, 120, 50, ${(a1 * 0.3).toFixed(3)})`);
+        grad.addColorStop(1.0, "rgba(0, 80, 30, 0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+
+      const GLOBE_R = 100;
+      const geom = new THREE.SphereGeometry(GLOBE_R * 1.003, 128, 64);
+      const mat = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true,
+        side: THREE.FrontSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
+
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = "shark-heatmap-overlay";
+      mesh.renderOrder = 1;
+      scene.add(mesh);
+    });
+
+    return () => {
+      cancelled = true;
+      removeExisting();
+    };
+  }, [showSharkHeatmap, sharkQ.data]);
 
   const isDrawing = draw.mode === "drawing";
 
@@ -289,14 +390,14 @@ export function OverfishGlobe({
     routes: flightRoutes,
     showVessels,
     showPaths,
-    vesselSize: ctl.vesselSize,
-    animationSpeed: ctl.animationSpeed,
-    tiltMode: ctl.tiltMode,
-    dashSize: ctl.dashSize,
-    gapSize: ctl.gapSize,
-    vesselElevation: ctl.vesselElevation,
-    arcMinAltitude: ctl.arcMinAltitude,
-    arcMaxAltitude: ctl.arcMaxAltitude,
+    vesselSize: controls.vesselSize,
+    animationSpeed: controls.animationSpeed,
+    tiltMode: controls.tiltMode,
+    dashSize: controls.dashSize,
+    gapSize: controls.gapSize,
+    vesselElevation: controls.vesselElevation,
+    arcMinAltitude: controls.arcMinAltitude,
+    arcMaxAltitude: controls.arcMaxAltitude,
   });
 
   // ── Arcs: demo vessel parabolic trajectory + port-call surface line ──
@@ -543,7 +644,7 @@ export function OverfishGlobe({
           return "rgba(255,210,50,0.72)";
         }}
         pointAltitude={0.01}
-        pointRadius={0.12}
+        pointRadius={0.35}
         pointResolution={3}
         pointsMerge={true}
         pointsTransitionDuration={0}

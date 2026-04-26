@@ -73,34 +73,25 @@ export function preloadVesselModel(): Promise<THREE.Object3D | null> {
  */
 export function makeLightweightVesselMesh(color: string): THREE.Group {
   const group = new THREE.Group();
+  const hex = new THREE.Color(color).getHex();
 
-  const hullColor = new THREE.Color(color).multiplyScalar(0.7).getHex();
-  const hull = new THREE.Mesh(
-    new THREE.BoxGeometry(HULL_LEN, HULL_BEAM, HULL_DEPTH),
-    new THREE.MeshBasicMaterial({ color: hullColor }),
+  // Core bright dot
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.35, 16, 16),
+    new THREE.MeshBasicMaterial({ color: hex })
   );
-  group.add(hull);
+  group.add(dot);
 
-  const deck = new THREE.Mesh(
-    new THREE.BoxGeometry(HULL_LEN * 0.55, HULL_BEAM * 0.6, HULL_DEPTH * 0.7),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(color).getHex() }),
-  );
-  deck.position.set(-HULL_LEN * 0.05, 0, HULL_DEPTH * 0.7);
-  group.add(deck);
-
-  // Small halo so the vessel reads against the bright Blue Marble.
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(HULL_LEN * 0.85, HULL_LEN * 1.0, 24),
+  // Soft glowing halo
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.85, 16, 16),
     new THREE.MeshBasicMaterial({
-      color: new THREE.Color(color).getHex(),
+      color: hex,
       transparent: true,
-      opacity: 0.55,
-      side: THREE.DoubleSide,
-    }),
+      opacity: 0.4,
+    })
   );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.set(0, 0, -HULL_DEPTH * 0.6);
-  group.add(ring);
+  group.add(glow);
 
   return group;
 }
