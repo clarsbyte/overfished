@@ -329,6 +329,34 @@ def build_agent_executor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
     return AgentExecutor(agent=agent, tools=tools, verbose=True)
 
 
+def _format_model_context_block(ctx: dict | None) -> str:
+    if not ctx:
+        return ""
+    selected = ctx.get("selected") or None
+    if not selected and not ctx.get("nearby") and not ctx.get("report_narration"):
+        return ""
+    lines = [
+        "MODEL CONTEXT (RNN+BiLSTM, soft-prob ensemble; treat as triage, not ground truth):"
+    ]
+    if selected:
+        risk_tag = str(selected.get("model_risk", "?")).upper()
+        p = float(selected.get("mean_confidence") or 0.0)
+        alias = selected.get("alias_mmsi")
+        alias_share = float(selected.get("alias_share") or 0.0)
+        alias_bit = (
+            f", alias candidate {alias} in {alias_share:.0%} of windows" if alias else ""
+        )
+        lines.append(
+            f"- Selected MMSI {selected.get('mmsi', '?')} -> {risk_tag} "
+            f"(mean P {p:.0%}{alias_bit})."
+        )
+        if selected.get("narration"):
+            lines.append(f"  {selected.get('narration')}")
+    if ctx.get("report_narration"):
+        lines.append(f"- Report summary: {ctx.get('report_narration')}")
+    return "\n".join(lines)
+
+
 def evaluate_point(
     latitude: float,
     longitude: float,
@@ -336,6 +364,7 @@ def evaluate_point(
     vessel_flag: str | None = None,
     gear: str | None = None,
     species: str | None = None,
+    model_context: dict | None = None,
 ) -> str:
     executor = build_agent_executor()
     extras = []
@@ -348,7 +377,10 @@ def evaluate_point(
     if port_country_code:
         extras.append(f"port country = {port_country_code}")
     extras_str = (" Context: " + "; ".join(extras) + ".") if extras else ""
+    model_block = _format_model_context_block(model_context)
+    prefix = (model_block + "\n\n") if model_block else ""
     question = (
+        f"{prefix}"
         f"Evaluate fishing legality at latitude {latitude}, longitude {longitude}."
         f"{extras_str} Run the dossier pipeline and return the formatted verdict."
     )

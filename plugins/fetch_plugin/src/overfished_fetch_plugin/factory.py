@@ -35,7 +35,19 @@ class FetchOrchestratorBackend:
                     detail={"error": err, "context": "overfished_ml.sequence"},
                 )
 
-        legal_mode = _looks_like_legal_action_request(query, payload)
+        action_hint = str(payload.get("action") or "").strip().lower()
+        if action_hint == "gfw":
+            try:
+                return await _run_gfw_action(query, payload)
+            except Exception as exc:
+                err = str(exc) or exc.__class__.__name__
+                return AgentRunResult(
+                    status="gfw_error",
+                    message=f"[fetch] GFW classification failed: {err}.",
+                    detail={"error": err, "context": "backend.gfw_agent"},
+                )
+
+        legal_mode = action_hint in {"vessel", "law", "complete"} or _looks_like_legal_action_request(query, payload)
         selected_specialist = "legal_action_orchestrator" if legal_mode else "chat_orchestrator"
 
         detail: dict[str, Any] = {
@@ -175,6 +187,36 @@ def _looks_like_legal_action_request(query: str, context: dict[str, Any]) -> boo
     return has_location and asks_legal
 
 
+async def _run_gfw_action(query: str, context: dict[str, Any]) -> AgentRunResult:
+    """Direct route for the GFW vessel-classification agent (FE 'gfw' tab)."""
+    backend_path = Path(__file__).resolve().parents[4] / "backend"
+    if str(backend_path) not in sys.path:
+        sys.path.insert(0, str(backend_path))
+
+    from gfw_agent import classify_vessel  # lazy
+
+    target = str(context.get("query") or context.get("mmsi") or query or "").strip()
+    if not target:
+        raise ValueError("gfw action requires 'query' or 'mmsi' in context (or non-empty query).")
+    days_back = int(context.get("days_back", 365))
+
+    model_ctx = context.get("model_context")
+    started = time.perf_counter()
+    output = await asyncio.to_thread(classify_vessel, target, days_back, model_ctx)
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    return AgentRunResult(
+        status="gfw_ok",
+        message=output,
+        detail={
+            "bridge": "gfw_agent.classify_vessel",
+            "query": target,
+            "days_back": days_back,
+            "elapsed_ms": elapsed_ms,
+            "model_context_used": bool(model_ctx),
+        },
+    )
+
+
 async def _run_existing_pdf_agent_bridge(context: dict[str, Any]) -> dict[str, Any]:
     # Demo default: produce immediate, deterministic action from context.
     no_llm = os.getenv("FETCH_AGENT_FAST_NO_LLM", "1").strip().lower() in {"1", "true", "yes"}
@@ -203,6 +245,7 @@ def _invoke_pipeline_agent(context: dict[str, Any]) -> dict[str, Any]:
     radius_miles = float(context.get("radius_miles", 50))
     port_country_code = context.get("port_country_code")
     mmsi = context.get("mmsi")
+    model_context = context.get("model_context")
 
     output = evaluate_incident(
         latitude=latitude,
@@ -210,6 +253,7 @@ def _invoke_pipeline_agent(context: dict[str, Any]) -> dict[str, Any]:
         radius_miles=radius_miles,
         port_country_code=port_country_code,
         mmsi=mmsi,
+        model_context=model_context,
     )
     action_summary = _extract_action_summary(output)
     return {
@@ -241,6 +285,7 @@ def _invoke_fast_legal_agent(context: dict[str, Any]) -> dict[str, Any]:
     vessel_flag = context.get("vessel_flag")
     gear = context.get("gear")
     species = context.get("species")
+    model_context = context.get("model_context")
 
     output = evaluate_point(
         latitude=latitude,
@@ -249,6 +294,7 @@ def _invoke_fast_legal_agent(context: dict[str, Any]) -> dict[str, Any]:
         vessel_flag=vessel_flag,
         gear=gear,
         species=species,
+        model_context=model_context,
     )
     verdict = _extract_verdict_label(output)
     action_summary = _derive_action_from_verdict(verdict)
@@ -347,32 +393,42 @@ def _build_demo_action_from_context(context: dict[str, Any]) -> dict[str, Any]:
     near_protected = bool(context.get("near_protected_area", True))
     has_ais_gap = bool(context.get("ais_gap", True))
 
-    if is_high_risk or (near_protected and has_ais_gap):
+    model_ctx = context.get("model_context") or {}
+    selected = (model_ctx.get("selected") if isinstance(model_ctx, dict) else None) or {}
+    model_risk = str(selected.get("model_risk") or "").lower()
+    model_narration = str(selected.get("narration") or "").strip()
+
+    if model_risk == "spoof_suspect" or is_high_risk or (near_protected and has_ais_gap):
         action = "FULL CASE"
         rationale = (
             "Dark-vessel/protected-area risk indicators justify immediate legal escalation "
             "and evidence package preparation."
         )
-    elif potential_risk:
+    elif model_risk == "uncertain" or potential_risk:
         action = "ALERT"
         rationale = "Risk indicators are present; request permit proof and initiate compliance notice."
     else:
         action = "MONITOR"
         rationale = "Insufficient high-confidence risk indicators for prosecution; continue surveillance."
 
-    summary = f"Action: {action}. {rationale}"
+    parts = [f"Action: {action}. {rationale}"]
+    if model_narration:
+        parts.append(f"RNN+BiLSTM: {model_narration}")
+    summary = " ".join(parts)
     return {
         "message": f"[fetch] Fast legal-action recommendation generated.\n{summary}",
         "detail": {
             "bridge": "deterministic_demo_policy",
             "mode": "fast_no_llm",
             "action_summary": summary,
+            "model_context_used": bool(selected),
             "inputs_used": {
                 "is_high_risk": is_high_risk,
                 "potential_risk": potential_risk,
                 "near_protected_area": near_protected,
                 "ais_gap": has_ais_gap,
                 "risk_hint": risk_hint,
+                "model_risk": model_risk or None,
             },
         },
     }

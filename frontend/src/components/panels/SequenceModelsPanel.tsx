@@ -1,18 +1,49 @@
-import { Brain, Network, Play } from "lucide-react";
+import { Brain, Database, Network, Play } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { CollapsiblePanel, type PanelStatus } from "@/components/CollapsiblePanel";
 import { useSequenceReport } from "@/hooks/useSequenceReport";
+import type { ModelRisk, PerMmsiSummary } from "@/lib/agentApi";
 import { SequencePredictionsList } from "./SequencePredictionsList";
 
 type ModelTab = "rnn" | "bilstm";
 
-export function SequenceModelsPanel({ className }: { className?: string }) {
-  const { data, error, isPending, run } = useSequenceReport();
+const RISK_RANK: Record<ModelRisk, number> = {
+  spoof_suspect: 2,
+  uncertain: 1,
+  safe: 0,
+};
+
+const RISK_BADGE: Record<ModelRisk, string> = {
+  safe: "bg-accent-safe/15 text-accent-safe ring-accent-safe/40",
+  uncertain: "bg-accent-suspect/15 text-accent-suspect ring-accent-suspect/40",
+  spoof_suspect: "bg-accent-iuu/15 text-accent-iuu ring-accent-iuu/40",
+};
+
+interface Props {
+  className?: string;
+  onSelectMmsi?: (mmsi: string) => void;
+}
+
+export function SequenceModelsPanel({ className, onSelectMmsi }: Props) {
+  const { data, error, isPending, run, runCanonical } = useSequenceReport();
   const [epochs, setEpochs] = useState(1);
   const [seqLen, setSeqLen] = useState(3);
   const [hiddenDim, setHiddenDim] = useState(8);
   const [tab, setTab] = useState<ModelTab>("rnn");
+
+  const suspects = useMemo<PerMmsiSummary[]>(() => {
+    const m = data?.per_mmsi_summary;
+    if (!m) return [];
+    return Object.values(m)
+      .slice()
+      .sort((a, b) => {
+        const r = RISK_RANK[b.model_risk] - RISK_RANK[a.model_risk];
+        if (r !== 0) return r;
+        return b.mean_confidence - a.mean_confidence;
+      })
+      .slice(0, 5);
+  }, [data?.per_mmsi_summary]);
 
   const status: PanelStatus = isPending
     ? "running"
@@ -73,21 +104,32 @@ export function SequenceModelsPanel({ className }: { className?: string }) {
           <Slider label="seq_len" value={seqLen} min={2} max={8} onChange={setSeqLen} />
           <Slider label="hidden" value={hiddenDim} min={8} max={64} step={8} onChange={setHiddenDim} />
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            run({
-              use_sample: true,
-              include_narration: true,
-              training: { epochs, seq_len: seqLen, hidden_dim: hiddenDim, top_k: 3, max_val_rows: 12 },
-            })
-          }
-          disabled={isPending}
-          className="flex w-full items-center justify-center gap-1.5 rounded bg-accent-safe/10 px-2 py-1.5 text-xs font-medium text-accent-safe ring-1 ring-accent-safe/40 transition hover:bg-accent-safe/20 disabled:opacity-50"
-        >
-          <Play size={12} />
-          {isPending ? "Training... (~10-30 s)" : "Run RNN + Bi-LSTM"}
-        </button>
+        <div className="grid grid-cols-1 gap-1.5">
+          <button
+            type="button"
+            onClick={() =>
+              run({
+                use_sample: true,
+                include_narration: true,
+                training: { epochs, seq_len: seqLen, hidden_dim: hiddenDim, top_k: 3, max_val_rows: 12 },
+              })
+            }
+            disabled={isPending}
+            className="flex w-full items-center justify-center gap-1.5 rounded bg-accent-safe/10 px-2 py-1.5 text-xs font-medium text-accent-safe ring-1 ring-accent-safe/40 transition hover:bg-accent-safe/20 disabled:opacity-50"
+          >
+            <Play size={12} />
+            {isPending ? "Training... (~10-30 s)" : "Run RNN + Bi-LSTM (synthetic)"}
+          </button>
+          <button
+            type="button"
+            onClick={() => runCanonical()}
+            disabled={isPending}
+            className="flex w-full items-center justify-center gap-1.5 rounded bg-ink-800 px-2 py-1.5 text-[11px] font-medium text-slate2-200 ring-1 ring-ink-700 transition hover:bg-ink-700 disabled:opacity-50"
+          >
+            <Database size={12} />
+            {isPending ? "Training canonical…" : "Run on canonical 300 GFW vessels"}
+          </button>
+        </div>
 
         {error && (
           <pre className="whitespace-pre-wrap break-words rounded border border-accent-iuu/40 bg-accent-iuu/10 p-2 text-[11px] text-accent-iuu">
@@ -152,6 +194,9 @@ export function SequenceModelsPanel({ className }: { className?: string }) {
               <Metric label="top-1 acc" value={acc !== undefined ? `${(acc * 100).toFixed(1)}%` : "-"} />
               <Metric label="loss" value={loss !== undefined ? loss.toFixed(3) : "-"} />
             </div>
+            {suspects.length > 0 && (
+              <SuspectsList suspects={suspects} onSelect={onSelectMmsi} />
+            )}
             <SequencePredictionsList rows={activeBlock.val_rows_sample} />
           </>
         )}
@@ -199,6 +244,49 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded bg-ink-900/60 px-2 py-1">
       <div className="text-[10px] uppercase tracking-wider text-slate2-400">{label}</div>
       <div className="font-mono text-xs text-slate2-200">{value}</div>
+    </div>
+  );
+}
+
+function SuspectsList({
+  suspects,
+  onSelect,
+}: {
+  suspects: PerMmsiSummary[];
+  onSelect?: (mmsi: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5 rounded border border-ink-800 bg-ink-900/60 p-2">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate2-400">
+        <span>Top suspect MMSIs</span>
+        <span className="font-mono">{suspects.length}</span>
+      </div>
+      <ul className="space-y-1">
+        {suspects.map((s) => {
+          const interactive = !!onSelect;
+          const Tag = interactive ? "button" : "div";
+          return (
+            <li key={s.mmsi}>
+              <Tag
+                {...(interactive ? { type: "button", onClick: () => onSelect?.(s.mmsi) } : {})}
+                className={`w-full rounded border border-ink-800 bg-ink-950 p-1.5 text-left text-[11px] transition ${
+                  interactive ? "hover:border-accent-safe/40 hover:bg-ink-900" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-slate2-200">{s.mmsi}</span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ring-1 ${RISK_BADGE[s.model_risk]}`}
+                  >
+                    {s.model_risk.replace("_", " ")}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-[10px] text-slate2-400">{s.narration}</p>
+              </Tag>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

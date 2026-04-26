@@ -745,6 +745,110 @@ def render_evidence_pdf(
     )
 
 
+@tool
+def lookup_model_context(mmsi: str) -> str:
+    """Fetch the latest RNN+BiLSTM sequence-model context for an MMSI.
+
+    Returns a short report block: model_risk verdict (safe / uncertain /
+    spoof_suspect), mean confidence over validation windows, alias candidate
+    MMSI (if any), and a one-sentence narration. Triage signal only — never
+    cite as ground truth in the evidence document.
+
+    Use when you encounter an MMSI you have NOT been given context for in the
+    MODEL CONTEXT block of the human message and you want a quick prior on
+    whether the model thinks its identity is consistent.
+    """
+    try:
+        from overfished_api.routers.sequence import get_latest_report
+    except Exception as exc:
+        return f"lookup_model_context unavailable (api package not importable): {exc!s}"
+
+    cache = get_latest_report()
+    if not cache or not cache.get("ready"):
+        return (
+            "lookup_model_context: no RNN+BiLSTM report cached yet. "
+            "Operator can train via the SequenceModelsPanel 'Run on canonical 300 GFW vessels'."
+        )
+    report = cache.get("report") or {}
+    per_mmsi = report.get("per_mmsi_summary") or {}
+    entry = per_mmsi.get(str(mmsi).strip())
+    if not entry:
+        return (
+            f"lookup_model_context: MMSI {mmsi} not in latest report "
+            f"(source={cache.get('source')}, generated_at={cache.get('generated_at')}). "
+            "This means the vessel was not in the validation slice; absence is not evidence."
+        )
+    risk = str(entry.get("model_risk", "?")).upper()
+    p = float(entry.get("mean_confidence") or 0.0)
+    alias = entry.get("alias_mmsi")
+    alias_share = float(entry.get("alias_share") or 0.0)
+    alias_bit = (
+        f", alias candidate {alias} in {alias_share:.0%} of windows"
+        if alias
+        else ""
+    )
+    narration = entry.get("narration") or ""
+    return (
+        f"MODEL CONTEXT lookup for MMSI {mmsi}: {risk} (mean P {p:.0%}{alias_bit}). "
+        f"{narration}"
+    )
+
+
+def _format_model_context_block(ctx: dict | None) -> str:
+    """Render ModelContext (LangChain static-runtime-context payload) for the prompt.
+
+    Empty / None -> empty string. The supervisor's human-message template
+    prepends this block when present so the LLM sees the model verdict
+    without needing to call `lookup_model_context` first.
+    """
+    if not ctx:
+        return ""
+    selected = ctx.get("selected") or None
+    nearby = ctx.get("nearby") or []
+    if not selected and not nearby and not ctx.get("report_narration"):
+        return ""
+
+    lines = [
+        "MODEL CONTEXT (RNN+BiLSTM, soft-prob ensemble; treat as triage signal, not ground truth):",
+    ]
+    if selected:
+        risk_tag = str(selected.get("model_risk", "?")).upper()
+        p = float(selected.get("mean_confidence") or 0.0)
+        alias = selected.get("alias_mmsi")
+        alias_share = float(selected.get("alias_share") or 0.0)
+        alias_bit = (
+            f", alias candidate {alias} in {alias_share:.0%} of windows"
+            if alias
+            else ""
+        )
+        mmsi = selected.get("mmsi", "?")
+        narration = selected.get("narration") or ""
+        lines.append(
+            f"- Selected MMSI {mmsi} -> {risk_tag} (mean P {p:.0%}{alias_bit})."
+        )
+        if narration:
+            lines.append(f"  {narration}")
+    if nearby:
+        bits = []
+        for n in nearby[:5]:
+            bits.append(
+                f"{n.get('mmsi', '?')} ({str(n.get('model_risk', '?')).upper()}, "
+                f"P {float(n.get('mean_confidence') or 0.0):.0%})"
+            )
+        lines.append(f"- Nearby flagged: {'; '.join(bits)}.")
+    if ctx.get("report_narration"):
+        lines.append(f"- Report summary: {ctx.get('report_narration')}")
+    src = ctx.get("source")
+    gen = ctx.get("generated_at")
+    if src or gen:
+        lines.append(f"- Source: {src or 'unknown'}; generated_at: {gen or 'n/a'}.")
+    lines.append(
+        "If you encounter an MMSI not listed here and want the model's prior on it, "
+        "call `lookup_model_context(mmsi)`."
+    )
+    return "\n".join(lines)
+
+
 SYSTEM_PROMPT = """You are a vessel-incursion analyst. Trigger: a "supposed vessel entering region X"
 event has been reported. Your job is to assemble an evidence document by composing three
 specialist subagents and synthesizing their findings.
@@ -901,6 +1005,7 @@ def build_supervisor(model: str = "claude-sonnet-4-6") -> AgentExecutor:
         filter_to_fishing_vessels,
         classify_vessels_iuu_batch,
         find_historical_vessels_in_region,
+        lookup_model_context,
         render_evidence_pdf,
     ]
     agent = create_tool_calling_agent(llm, tools, prompt)
@@ -1118,6 +1223,7 @@ def evaluate_incident(
     radius_miles: float = 50.0,
     port_country_code: str | None = None,
     mmsi: str | None = None,
+    model_context: dict | None = None,
 ) -> str:
     prefetch = _prefetch_turn1(latitude, longitude, radius_miles, port_country_code)
 
@@ -1131,7 +1237,11 @@ def evaluate_incident(
         )
     extras_str = (" Context: " + "; ".join(extras) + ".") if extras else ""
 
+    model_block = _format_model_context_block(model_context)
+    model_prefix = (model_block + "\n\n") if model_block else ""
+
     question = (
+        f"{model_prefix}"
         f"A supposed vessel has been reported entering the region around "
         f"latitude {latitude}, longitude {longitude} (search radius {radius_miles} miles)."
         f"{extras_str}\n\n"
@@ -1228,6 +1338,7 @@ def evaluate_incident_structured(
     radius_miles: float = 50.0,
     port_country_code: str | None = None,
     mmsi: str | None = None,
+    model_context: dict | None = None,
 ) -> dict:
     """Same pipeline as evaluate_incident, returned as a structured dict.
 
@@ -1245,6 +1356,7 @@ def evaluate_incident_structured(
         radius_miles=radius_miles,
         port_country_code=port_country_code,
         mmsi=mmsi,
+        model_context=model_context,
     )
     artifacts = _parse_pipeline_artifacts(summary)
     return {"summary": summary, **artifacts}

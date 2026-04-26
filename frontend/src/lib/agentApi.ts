@@ -35,8 +35,12 @@ export type AgentTextBlock = {
 };
 
 export interface AgentRunResponse {
-  agent: string;
-  output: string | AgentTextBlock[];
+  status?: string;
+  message?: string | AgentTextBlock[];
+  detail?: Record<string, unknown> | null;
+  // Legacy fields some callers still read.
+  agent?: string;
+  output?: string | AgentTextBlock[];
   [k: string]: unknown;
 }
 
@@ -69,6 +73,28 @@ export interface SuspectWindow {
   confidence: number;
   note: string;
 }
+
+export type ModelRisk = "safe" | "uncertain" | "spoof_suspect";
+
+export interface PerMmsiSummary {
+  mmsi: string;
+  n_windows: number;
+  top1_match_rate: number;
+  mean_confidence: number;
+  alias_mmsi: string | null;
+  alias_share: number;
+  model_risk: ModelRisk;
+  narration: string;
+}
+
+export interface ModelContext {
+  selected: PerMmsiSummary | null;
+  nearby: PerMmsiSummary[];
+  report_narration: string | null;
+  generated_at: string | null;
+  source: "demo" | "canonical" | null;
+}
+
 export interface SequenceReport {
   class_to_mmsi: Record<string, string>;
   feature_columns: string[];
@@ -78,7 +104,15 @@ export interface SequenceReport {
   bilstm: SequenceModelBlock;
   ensemble: SequenceEnsembleBlock | null;
   suspect_readout: { suspect_windows: SuspectWindow[]; count: number };
+  per_mmsi_summary?: Record<string, PerMmsiSummary>;
   narration?: string;
+}
+
+export interface SequenceLatest {
+  ready: boolean;
+  report: SequenceReport | null;
+  generated_at: string | null;
+  source: "demo" | "canonical" | null;
 }
 
 export interface SequenceReportRequest {
@@ -96,17 +130,88 @@ export interface SequenceReportRequest {
   };
 }
 
+export type AgentAction = "gfw" | "vessel" | "law" | "complete";
+
+export interface AgentRunPayload {
+  latitude?: number;
+  longitude?: number;
+  radius_miles?: number;
+  mmsi?: string;
+  query?: string;
+  days_back?: number;
+}
+
+function buildAgentRunBody(
+  action: AgentAction,
+  payload: AgentRunPayload,
+  modelContext?: ModelContext | null,
+) {
+  // /agent/run expects { query, context }. Context is the LangChain
+  // "static runtime context" slot — see plugins/fetch_plugin/.../factory.py
+  // and backend/pipeline_agent.py:_format_model_context_block.
+  const query =
+    payload.query ??
+    (action === "gfw"
+      ? payload.mmsi ?? action
+      : `agent action: ${action}`);
+  return {
+    query,
+    context: {
+      action,
+      ...payload,
+      model_context: modelContext ?? null,
+    },
+  };
+}
+
+function agentRun(
+  action: AgentAction,
+  payload: AgentRunPayload,
+  modelContext?: ModelContext | null,
+) {
+  return post<AgentRunResponse>(
+    "/agent/run",
+    buildAgentRunBody(action, payload, modelContext),
+  );
+}
+
 export const agentApi = {
-  gfw: (query: string, daysBack = 365) =>
-    post<AgentRunResponse>("/agent/gfw", { query, days_back: daysBack }),
-  vessel: (latitude: number, longitude: number, radius_miles = 50) =>
-    post<AgentRunResponse>("/agent/vessel", { latitude, longitude, radius_miles }),
-  law: (latitude: number, longitude: number) =>
-    post<AgentRunResponse>("/agent/law", { latitude, longitude }),
-  complete: (latitude: number, longitude: number, mmsi?: string, radius_miles = 50) =>
-    post<AgentRunResponse>("/agent/complete", { latitude, longitude, radius_miles, mmsi }),
+  run: agentRun,
+
+  gfw: (query: string, daysBack = 365, modelContext?: ModelContext | null) =>
+    agentRun("gfw", { query, mmsi: query, days_back: daysBack }, modelContext),
+
+  vessel: (
+    latitude: number,
+    longitude: number,
+    radius_miles = 50,
+    modelContext?: ModelContext | null,
+  ) =>
+    agentRun("vessel", { latitude, longitude, radius_miles }, modelContext),
+
+  law: (
+    latitude: number,
+    longitude: number,
+    modelContext?: ModelContext | null,
+  ) => agentRun("law", { latitude, longitude }, modelContext),
+
+  complete: (
+    latitude: number,
+    longitude: number,
+    mmsi?: string,
+    radius_miles = 50,
+    modelContext?: ModelContext | null,
+  ) =>
+    agentRun(
+      "complete",
+      { latitude, longitude, radius_miles, mmsi },
+      modelContext,
+    ),
 
   sequenceDemo: () => get<SequenceReport>("/ml/sequence/demo"),
   sequenceReport: (body: SequenceReportRequest) =>
     post<SequenceReport>("/ml/sequence/report", body),
+  sequenceLatest: () => get<SequenceLatest>("/ml/sequence/latest"),
+  sequenceRunCanonical: () =>
+    post<SequenceReport>("/ml/sequence/run-canonical"),
 };

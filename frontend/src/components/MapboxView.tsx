@@ -124,8 +124,21 @@ export const MapboxView = forwardRef<MapboxHandle, Props>(function MapboxView(
       )}
 
       {ships.map((s) => {
-        const color = s.risk ? RISK_COLOR[s.risk] : SOURCE_COLOR[s.source];
+        const modelColor =
+          s.modelRisk === "spoof_suspect"
+            ? "#ff3b3b"
+            : s.modelRisk === "uncertain"
+              ? "#ffaa00"
+              : null;
+        const color = modelColor ?? (s.risk ? RISK_COLOR[s.risk] : SOURCE_COLOR[s.source]);
         const isSelected = selected?.mmsi === s.mmsi;
+        const haloRing =
+          s.modelRisk === "spoof_suspect"
+            ? "model-halo-spoof"
+            : s.modelRisk === "uncertain"
+              ? "model-halo-uncertain"
+              : "";
+        const tooltip = s.modelNarration ?? s.name ?? s.mmsi;
         return (
           <Marker
             key={`${s.source}:${s.mmsi}`}
@@ -137,19 +150,33 @@ export const MapboxView = forwardRef<MapboxHandle, Props>(function MapboxView(
               onSelect(s);
             }}
           >
-            <div
-              className={`rounded-full ring-1 transition-transform ${
-                isSelected ? "scale-150 ring-white" : "ring-white/40 hover:scale-125"
-              }`}
-              style={{
-                width: isSelected ? 12 : 8,
-                height: isSelected ? 12 : 8,
-                background: color,
-                boxShadow: `0 0 8px ${color}`,
-                cursor: "pointer",
-              }}
-              title={s.name ?? s.mmsi}
-            />
+            <div className={`relative ${haloRing}`} title={tooltip} style={{ cursor: "pointer" }}>
+              {s.modelRisk === "spoof_suspect" && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 -m-2 rounded-full border-2 border-dashed animate-pulse"
+                  style={{ borderColor: modelColor!, opacity: 0.7 }}
+                />
+              )}
+              {s.modelRisk === "uncertain" && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 -m-1.5 rounded-full border"
+                  style={{ borderColor: modelColor!, opacity: 0.55 }}
+                />
+              )}
+              <div
+                className={`rounded-full ring-1 transition-transform ${
+                  isSelected ? "scale-150 ring-white" : "ring-white/40 hover:scale-125"
+                }`}
+                style={{
+                  width: isSelected ? 12 : 8,
+                  height: isSelected ? 12 : 8,
+                  background: color,
+                  boxShadow: `0 0 8px ${color}`,
+                }}
+              />
+            </div>
           </Marker>
         );
       })}

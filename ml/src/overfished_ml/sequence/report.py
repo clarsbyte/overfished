@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -188,6 +189,7 @@ def build_sequence_report(
         if ensemble_val_summary is not None
         else None
     )
+    per_mmsi = _per_mmsi_summary(ens_block, rnn_sum, lstm_sum)
     return {
         "class_to_mmsi": {str(k): v for k, v in comparison.dataset_bundle.class_to_mmsi.items()},
         "feature_columns": list(comparison.dataset_bundle.feature_columns),
@@ -197,7 +199,130 @@ def build_sequence_report(
         "bilstm": lstm_sum,
         "ensemble": ens_block,
         "suspect_readout": _suspect_readout_from_ensemble(ens_block, rnn_sum),
+        "per_mmsi_summary": per_mmsi,
     }
+
+
+def _per_mmsi_summary(
+    ensemble_block: dict[str, Any] | None,
+    rnn_block: dict[str, Any],
+    bilstm_block: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Roll up per-MMSI signal from validation rows.
+
+    Returns mapping `mmsi -> { n_windows, top1_match_rate, mean_confidence,
+    alias_mmsi, alias_share, model_risk, narration }`. Drives map-marker
+    decoration and agent context.
+    """
+    rows = (ensemble_block or {}).get("val_rows_sample") or rnn_block.get("val_rows_sample") or []
+    confidences: dict[str, list[float]] = defaultdict(list)
+    matches: dict[str, list[int]] = defaultdict(list)
+    wrong_guesses: dict[str, Counter[str]] = defaultdict(Counter)
+
+    for row in rows:
+        true_m = str(row.get("true_mmsi", "")).strip()
+        if not true_m:
+            continue
+        preds = row.get("topk_predictions") or []
+        if not preds:
+            continue
+        top = preds[0]
+        guess = str(top.get("mmsi", "")).strip()
+        p = float(top.get("probability", 0.0) or 0.0)
+        confidences[true_m].append(p)
+        if guess == true_m:
+            matches[true_m].append(1)
+        else:
+            matches[true_m].append(0)
+            if guess:
+                wrong_guesses[true_m][guess] += 1
+
+    # also pull bilstm for cross-model agreement on alias candidate
+    bilstm_rows = bilstm_block.get("val_rows_sample") or []
+    bilstm_top: dict[str, list[str]] = defaultdict(list)
+    for row in bilstm_rows:
+        true_m = str(row.get("true_mmsi", "")).strip()
+        preds = row.get("topk_predictions") or []
+        if not true_m or not preds:
+            continue
+        bilstm_top[true_m].append(str(preds[0].get("mmsi", "")).strip())
+
+    out: dict[str, dict[str, Any]] = {}
+    for mmsi, conf_list in confidences.items():
+        n = len(conf_list)
+        mean_conf = sum(conf_list) / n if n else 0.0
+        match_rate = sum(matches[mmsi]) / n if n else 0.0
+        alias_mmsi: str | None = None
+        alias_share = 0.0
+        if wrong_guesses[mmsi]:
+            alias_mmsi, alias_n = wrong_guesses[mmsi].most_common(1)[0]
+            alias_share = alias_n / n
+
+        if match_rate < 0.5 and alias_share >= 0.4:
+            risk = "spoof_suspect"
+        elif mean_conf < 0.4:
+            risk = "uncertain"
+        else:
+            risk = "safe"
+
+        # Cross-model corroboration sentence (BiLSTM agrees with the alias guess?)
+        bilstm_alias_share = 0.0
+        if alias_mmsi and bilstm_top[mmsi]:
+            bilstm_alias_share = sum(1 for g in bilstm_top[mmsi] if g == alias_mmsi) / max(
+                1, len(bilstm_top[mmsi])
+            )
+
+        narration = _per_mmsi_narration(
+            mmsi=mmsi,
+            risk=risk,
+            n=n,
+            mean_conf=mean_conf,
+            match_rate=match_rate,
+            alias_mmsi=alias_mmsi,
+            alias_share=alias_share,
+            bilstm_alias_share=bilstm_alias_share,
+        )
+        out[mmsi] = {
+            "mmsi": mmsi,
+            "n_windows": n,
+            "top1_match_rate": round(match_rate, 4),
+            "mean_confidence": round(mean_conf, 4),
+            "alias_mmsi": alias_mmsi,
+            "alias_share": round(alias_share, 4),
+            "model_risk": risk,
+            "narration": narration,
+        }
+    return out
+
+
+def _per_mmsi_narration(
+    *,
+    mmsi: str,
+    risk: str,
+    n: int,
+    mean_conf: float,
+    match_rate: float,
+    alias_mmsi: str | None,
+    alias_share: float,
+    bilstm_alias_share: float,
+) -> str:
+    if risk == "spoof_suspect":
+        bilstm_bit = (
+            f" BiLSTM agrees ({bilstm_alias_share:.0%})." if bilstm_alias_share >= 0.4 else ""
+        )
+        return (
+            f"RNN+BiLSTM repeatedly mis-identifies MMSI {mmsi} as {alias_mmsi} "
+            f"({alias_share:.0%} of {n} windows, mean P {mean_conf:.0%}); identity-spoof candidate.{bilstm_bit}"
+        )
+    if risk == "uncertain":
+        return (
+            f"Low identity confidence on MMSI {mmsi} (mean P {mean_conf:.0%} across {n} windows); "
+            "treat as uncertain."
+        )
+    return (
+        f"MMSI {mmsi} matches its sequence signature {match_rate:.0%} of {n} windows "
+        f"(mean P {mean_conf:.0%})."
+    )
 
 
 def _suspect_readout_from_ensemble(

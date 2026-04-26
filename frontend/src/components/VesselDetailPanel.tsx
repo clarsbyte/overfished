@@ -102,12 +102,65 @@ function ErrBox({ error }: { error: unknown }) {
 
 // ── Overview tab ─────────────────────────────────────────────────────
 
+const MODEL_RISK_BADGE: Record<NonNullable<Ship["modelRisk"]>, string> = {
+  safe: "bg-accent-safe/15 text-accent-safe ring-accent-safe/40",
+  uncertain: "bg-accent-suspect/15 text-accent-suspect ring-accent-suspect/40",
+  spoof_suspect: "bg-accent-iuu/15 text-accent-iuu ring-accent-iuu/40",
+};
+
+const MODEL_RISK_LABEL: Record<NonNullable<Ship["modelRisk"]>, string> = {
+  safe: "SAFE",
+  uncertain: "UNCERTAIN",
+  spoof_suspect: "SPOOF SUSPECT",
+};
+
+function ModelVerdictBlock({ ship }: { ship: Ship }) {
+  if (!ship.modelRisk) return null;
+  const conf = typeof ship.modelConfidence === "number" ? ship.modelConfidence : null;
+  const match = typeof ship.modelMatchRate === "number" ? ship.modelMatchRate : null;
+  return (
+    <div className="space-y-1.5 rounded border border-ink-800 bg-ink-900 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate2-400">
+          RNN + BiLSTM verdict
+        </span>
+        <span
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ring-1 ${MODEL_RISK_BADGE[ship.modelRisk]}`}
+        >
+          {MODEL_RISK_LABEL[ship.modelRisk]}
+        </span>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+        {conf !== null && (
+          <Row label="Mean P">
+            <span className="font-mono">{(conf * 100).toFixed(0)}%</span>
+          </Row>
+        )}
+        {match !== null && (
+          <Row label="Match rate">
+            <span className="font-mono">{(match * 100).toFixed(0)}%</span>
+          </Row>
+        )}
+        {ship.modelAliasMmsi && (
+          <Row label="Alias candidate">
+            <span className="font-mono">{ship.modelAliasMmsi}</span>
+          </Row>
+        )}
+      </dl>
+      {ship.modelNarration && (
+        <p className="text-[11px] leading-snug text-slate2-200">{ship.modelNarration}</p>
+      )}
+    </div>
+  );
+}
+
 function OverviewTab({ ship, vessel, loading, flag, vesselType, duration, summary }: {
   ship: Ship; vessel?: Vessel; loading: boolean;
   flag?: string; vesselType?: string | null; duration?: number; summary?: string | null;
 }) {
   return (
     <div className="space-y-2">
+      <ModelVerdictBlock ship={ship} />
       {summary && (
         <p className="rounded border border-ink-800 bg-ink-900 p-2 text-[11px] leading-snug text-slate2-200">
           {summary}

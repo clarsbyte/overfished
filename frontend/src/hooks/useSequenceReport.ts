@@ -54,12 +54,23 @@ async function run(params?: SequenceReportRequest) {
   }
 }
 
+async function runCanonical() {
+  setState({ isPending: true, error: null, lastParams: state.lastParams });
+  try {
+    const data = await agentApi.sequenceRunCanonical();
+    setState({ data, isPending: false, error: null });
+  } catch (error) {
+    setState({ error: error as Error, isPending: false });
+  }
+}
+
 export interface UseSequenceReport {
   data: SequenceReport | null;
   error: Error | null;
   isPending: boolean;
   lastParams: SequenceReportRequest | null;
   run: (params?: SequenceReportRequest) => Promise<void>;
+  runCanonical: () => Promise<void>;
 }
 
 export function useSequenceReport(): UseSequenceReport {
@@ -70,5 +81,6 @@ export function useSequenceReport(): UseSequenceReport {
     isPending: snap.isPending,
     lastParams: snap.lastParams,
     run,
+    runCanonical,
   };
 }

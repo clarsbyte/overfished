@@ -23,13 +23,13 @@ export interface GlobalVesselTrack {
 }
 
 /** Empty or unset `VITE_API_URL` → same-origin `/api` (Vite proxy in dev). */
-function resolveDemoApiBase(): string {
+export function getDemoApiBase(): string {
   const raw = import.meta.env.VITE_API_URL;
   if (raw == null || String(raw).trim() === "") return "/api";
   return String(raw).replace(/\/$/, "");
 }
 
-const BASE = resolveDemoApiBase();
+const BASE = getDemoApiBase();
 
 export interface NotifyPortResponse {
   port: { name: string; un_locode: string; lat: number; lon: number };
