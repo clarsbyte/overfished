@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 import comms_lookup
 from documents.render import render_document_family
 from fixtures._loader import load_model
-from tools import comms, cv_bridge, fines, ports, region, regulations, risk, vessels
+from tools import comms, cv_bridge, fines, ports, region, regulations, risk, species_exposure, vessels
 from tools.schemas import CaseFile
 
 app = FastAPI(title="Overfish AI Backend", version="0.1.0")
@@ -71,6 +71,17 @@ def heatmap(region_id: str = "galapagos", days: int = 30):
 def fishery_regions():
     """Named fishery regions worldwide with risk classification — feeds globe.gl Hexed Polygons."""
     return region.get_fishery_regions()
+
+
+@app.get("/species-fishing-exposure")
+def species_fishing_exposure_route(species: str = "cod"):
+    """Curated species → fishery regions ranked by demo IUU-style risk (fixture-only)."""
+    try:
+        return species_exposure.get_species_fishing_exposure(species)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e)) from e
 
 
 @app.get("/vessel-tracks/global")

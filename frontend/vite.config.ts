@@ -5,6 +5,8 @@ import glsl from "vite-plugin-glsl";
 
 export default defineConfig({
   plugins: [react(), glsl()],
+  envDir: path.resolve(__dirname, ".."),
+  envPrefix: ["VITE_", "MAP_BOX_"],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -22,6 +24,11 @@ export default defineConfig({
       "/static": {
         target: "http://localhost:8000",
         changeOrigin: true,
+      },
+      "/agentapi": {
+        target: "http://localhost:8001",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/agentapi/, ""),
       },
     },
   },
