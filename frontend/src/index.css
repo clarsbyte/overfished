@@ -3,44 +3,113 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-[#030708] text-slate-200 antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  html, body, #root {
+    height: 100%;
+    background-color: #040811;
+    color: #e8ecf5;
+    font-family: "Inter", system-ui, sans-serif;
   }
 }
 
-/* react-globe.gl needs its container to have explicit dimensions */
-.globe-host {
-  position: fixed;
+:root {
+  --space-bg: #040811;
+  --space-bg-soft: #0a1326;
+  --glass-border: rgba(170, 205, 255, 0.24);
+  --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.space-canvas {
+  position: relative;
+  background:
+    radial-gradient(1200px 900px at 60% 45%, rgba(17, 38, 77, 0.45) 0%, rgba(5, 9, 20, 0) 60%),
+    radial-gradient(900px 700px at 20% 20%, rgba(12, 24, 48, 0.55) 0%, rgba(4, 8, 17, 0) 62%),
+    linear-gradient(180deg, var(--space-bg-soft) 0%, var(--space-bg) 65%, #02040a 100%);
+}
+
+.starfield-static {
+  position: absolute;
   inset: 0;
-  z-index: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.62;
+  background-image:
+    radial-gradient(2px 2px at 6% 12%, rgba(255, 255, 255, 0.95), transparent 55%),
+    radial-gradient(1.5px 1.5px at 20% 28%, rgba(240, 248, 255, 0.78), transparent 55%),
+    radial-gradient(1.5px 1.5px at 34% 18%, rgba(202, 226, 255, 0.66), transparent 55%),
+    radial-gradient(2px 2px at 43% 36%, rgba(255, 255, 255, 0.82), transparent 55%),
+    radial-gradient(1.5px 1.5px at 52% 11%, rgba(255, 255, 255, 0.9), transparent 55%),
+    radial-gradient(2px 2px at 64% 23%, rgba(196, 222, 255, 0.72), transparent 55%),
+    radial-gradient(1.5px 1.5px at 75% 14%, rgba(255, 255, 255, 0.84), transparent 55%),
+    radial-gradient(1.5px 1.5px at 88% 31%, rgba(232, 242, 255, 0.74), transparent 55%),
+    radial-gradient(2px 2px at 15% 56%, rgba(255, 255, 255, 0.86), transparent 55%),
+    radial-gradient(1.5px 1.5px at 31% 64%, rgba(210, 229, 255, 0.68), transparent 55%),
+    radial-gradient(1.5px 1.5px at 47% 58%, rgba(255, 255, 255, 0.86), transparent 55%),
+    radial-gradient(2px 2px at 59% 67%, rgba(246, 250, 255, 0.76), transparent 55%),
+    radial-gradient(1.5px 1.5px at 70% 53%, rgba(188, 214, 255, 0.66), transparent 55%),
+    radial-gradient(2px 2px at 82% 62%, rgba(255, 255, 255, 0.82), transparent 55%),
+    radial-gradient(1.5px 1.5px at 92% 49%, rgba(212, 231, 255, 0.7), transparent 55%),
+    radial-gradient(1.5px 1.5px at 10% 82%, rgba(255, 255, 255, 0.84), transparent 55%),
+    radial-gradient(2px 2px at 24% 90%, rgba(205, 224, 255, 0.72), transparent 55%),
+    radial-gradient(1.5px 1.5px at 39% 86%, rgba(255, 255, 255, 0.86), transparent 55%),
+    radial-gradient(2px 2px at 55% 91%, rgba(236, 244, 255, 0.76), transparent 55%),
+    radial-gradient(1.5px 1.5px at 68% 84%, rgba(188, 214, 255, 0.7), transparent 55%),
+    radial-gradient(2px 2px at 81% 88%, rgba(255, 255, 255, 0.88), transparent 55%),
+    radial-gradient(1.5px 1.5px at 94% 79%, rgba(222, 236, 255, 0.72), transparent 55%);
 }
 
-/* Animated background spin for LiquidGlass silk textures */
-@keyframes spin {
-  from {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
+.glass-surface {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(194, 222, 255, 0.06) 24%, rgba(8, 14, 28, 0.55) 100%),
+    linear-gradient(180deg, rgba(7, 13, 24, 0.82), rgba(4, 8, 16, 0.74));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
+.glass-panel {
+  border-radius: 14px;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+.glass-shell {
+  border-radius: 999px;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+.glass-chip {
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.16) 0%, rgba(186, 214, 255, 0.07) 34%, rgba(10, 15, 28, 0.66) 100%),
+    linear-gradient(180deg, rgba(6, 12, 23, 0.82), rgba(4, 8, 16, 0.74));
+  border: 1px solid rgba(165, 197, 245, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 6px 20px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+/* Mapbox popup chrome -> dark theme */
+.mapboxgl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5) !important;
+  border-radius: 6px !important;
+}
+.mapboxgl-popup-tip {
+  display: none !important;
+}
+.mapboxgl-popup-close-button {
+  color: #7a8398 !important;
+  font-size: 18px !important;
+  padding: 2px 6px !important;
+}
+.mapboxgl-ctrl-group {
+  background: #11172a !important;
+  border: 1px solid #1a2138 !important;
+}
+.mapboxgl-ctrl-group button {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.globe-canvas canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
