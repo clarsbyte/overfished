@@ -54,6 +54,24 @@ gwf_documentation.txt
 
 # Claude
 .claude/settings.local.json
+**/.claude/settings.local.json
+**/.claude/
+
+# Next.js auto-generated typings (we use Vite, this file shouldn't be tracked)
+frontend/next-env.d.ts
+
+# Raw shark dataset — only the processed shark-heatmap.json is used at runtime.
+frontend/public/shark-dataset.xml
+frontend/public/shark_dataset/
+frontend/scripts/process-shark-shapefile.mjs
+
+# Old/unused alternate backend (we use backend/api/main.py instead)
+api/src/overfished_api/routers/ai_call.py
+api/tests/test_agent_endpoints.py
+
+# Finetune intermediate artifacts and scripts (not used at runtime)
+finetune/data/extracted_rules.jsonl
+finetune/src/finetune/extract_from_pdfs.py
 
 # OS
 .DS_Store

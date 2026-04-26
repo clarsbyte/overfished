@@ -40,12 +40,12 @@ export type AgentTextBlock = {
 };
 
 export interface AgentRunResponse {
-  status?: string;
-  message?: string | AgentTextBlock[];
-  detail?: Record<string, unknown> | null;
-  // Legacy fields some callers still read.
-  agent?: string;
+  agent: string;
   output?: string | AgentTextBlock[];
+  summary?: string;
+  risk?: boolean;
+  pdf_path?: string;
+  case_id?: string;
   [k: string]: unknown;
 }
 
@@ -135,88 +135,19 @@ export interface SequenceReportRequest {
   };
 }
 
-export type AgentAction = "gfw" | "vessel" | "law" | "complete";
-
-export interface AgentRunPayload {
-  latitude?: number;
-  longitude?: number;
-  radius_miles?: number;
-  mmsi?: string;
-  query?: string;
-  days_back?: number;
-}
-
-function buildAgentRunBody(
-  action: AgentAction,
-  payload: AgentRunPayload,
-  modelContext?: ModelContext | null,
-) {
-  // /agent/run expects { query, context }. Context is the LangChain
-  // "static runtime context" slot — see plugins/fetch_plugin/.../factory.py
-  // and backend/pipeline_agent.py:_format_model_context_block.
-  const query =
-    payload.query ??
-    (action === "gfw"
-      ? payload.mmsi ?? action
-      : `agent action: ${action}`);
-  return {
-    query,
-    context: {
-      action,
-      ...payload,
-      model_context: modelContext ?? null,
-    },
-  };
-}
-
-function agentRun(
-  action: AgentAction,
-  payload: AgentRunPayload,
-  modelContext?: ModelContext | null,
-) {
-  return post<AgentRunResponse>(
-    "/agent/run",
-    buildAgentRunBody(action, payload, modelContext),
-  );
-}
-
 export const agentApi = {
-  run: agentRun,
-
-  gfw: (query: string, daysBack = 365, modelContext?: ModelContext | null) =>
-    agentRun("gfw", { query, mmsi: query, days_back: daysBack }, modelContext),
-
-  vessel: (
-    latitude: number,
-    longitude: number,
-    radius_miles = 50,
-    modelContext?: ModelContext | null,
-  ) =>
-    agentRun("vessel", { latitude, longitude, radius_miles }, modelContext),
-
-  law: (
-    latitude: number,
-    longitude: number,
-    modelContext?: ModelContext | null,
-  ) => agentRun("law", { latitude, longitude }, modelContext),
-
-  complete: (
-    latitude: number,
-    longitude: number,
-    mmsi?: string,
-    radius_miles = 50,
-    modelContext?: ModelContext | null,
-  ) =>
-    agentRun(
-      "complete",
-      { latitude, longitude, radius_miles, mmsi },
-      modelContext,
-    ),
+  gfw: (query: string, daysBack = 365) =>
+    post<AgentRunResponse>("/agent/gfw", { query, days_back: daysBack }),
+  vessel: (latitude: number, longitude: number, radius_miles = 50) =>
+    post<AgentRunResponse>("/agent/vessel", { latitude, longitude, radius_miles }),
+  law: (latitude: number, longitude: number) =>
+    post<AgentRunResponse>("/agent/law", { latitude, longitude }),
+  complete: (latitude: number, longitude: number, port_country_code?: string) =>
+    post<AgentRunResponse>("/agent/complete", { latitude, longitude, port_country_code }),
 
   sequenceDemo: () => get<SequenceReport>("/ml/sequence/demo"),
   sequenceReport: (body: SequenceReportRequest) =>
     post<SequenceReport>("/ml/sequence/report", body),
   sequenceLatest: () => get<SequenceLatest>("/ml/sequence/latest"),
-  sequenceRunCanonical: () =>
-    post<SequenceReport>("/ml/sequence/run-canonical"),
+  sequenceRunCanonical: () => post<SequenceReport>("/ml/sequence/run-canonical"),
 };

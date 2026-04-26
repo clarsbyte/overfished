@@ -1,102 +1,72 @@
 import { useMutation } from "@tanstack/react-query";
-import { Bot, Brain, Crosshair, Gavel, Play, Radar, Workflow } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Bot, MapPin, Play, Radar, Workflow } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { CollapsiblePanel, type PanelStatus } from "@/components/CollapsiblePanel";
-import { buildModelContext, useSequenceLatest } from "@/hooks/useSequenceLatest";
 import {
   agentApi,
   type AgentRunResponse,
   type AgentTextBlock,
-  type ModelContext,
 } from "@/lib/agentApi";
 import type { Ship } from "@/types/ship";
 
-function coerceOutput(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) {
-    return value
+function coerceOutput(data: AgentRunResponse | undefined): string {
+  if (!data) return "";
+  const out = data.output;
+  if (typeof out === "string" && out) return out;
+  if (Array.isArray(out)) {
+    const text = out
       .map((b: AgentTextBlock | string) => {
         if (typeof b === "string") return b;
         if (b && typeof b.text === "string") return b.text;
-        try {
-          return JSON.stringify(b);
-        } catch {
-          return String(b);
-        }
+        try { return JSON.stringify(b); } catch { return String(b); }
       })
       .filter(Boolean)
       .join("\n");
+    if (text) return text;
   }
-  return "";
-}
-
-function pickAgentText(data: AgentRunResponse | undefined): string {
-  if (!data) return "";
-  return (
-    coerceOutput(data.output) ||
-    coerceOutput(data.message) ||
-    JSON.stringify(data, null, 2)
-  );
+  if (data.summary) return data.summary;
+  return JSON.stringify(data, null, 2);
 }
 
 interface Props {
   selectedShip: Ship | null;
   className?: string;
+  onRequestGlobePick?: (cb: (lat: number, lng: number) => void) => void;
 }
 
-type TabId = "gfw" | "vessel" | "law" | "complete";
+type TabId = "gfw" | "complete";
 
 const TABS: { id: TabId; label: string; icon: JSX.Element; eta: string }[] = [
   { id: "gfw", label: "GFW", icon: <Radar size={12} />, eta: "30-60 s" },
-  { id: "vessel", label: "AIS", icon: <Crosshair size={12} />, eta: "30-120 s" },
-  { id: "law", label: "Law", icon: <Gavel size={12} />, eta: "10-30 s" },
-  { id: "complete", label: "Complete", icon: <Workflow size={12} />, eta: "60-120 s" },
+  { id: "complete", label: "Complete", icon: <Workflow size={12} />, eta: "2-3 min" },
 ];
 
-export function AgentsPanel({ selectedShip, className }: Props) {
+export function AgentsPanel({ selectedShip, className, onRequestGlobePick }: Props) {
   const [tab, setTab] = useState<TabId>("gfw");
   const [query, setQuery] = useState("");
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
-  const [mmsi, setMmsi] = useState("");
+  const [portCountryCode, setPortCountryCode] = useState("ECU");
   const [elapsed, setElapsed] = useState<number | null>(null);
+  const [awaitingPin, setAwaitingPin] = useState(false);
+
+  const handlePlacePin = () => {
+    if (!onRequestGlobePick) return;
+    setAwaitingPin(true);
+    onRequestGlobePick((pickedLat, pickedLng) => {
+      setLat(pickedLat.toFixed(5));
+      setLon(pickedLng.toFixed(5));
+      setAwaitingPin(false);
+    });
+  };
 
   useEffect(() => {
     if (!selectedShip) return;
     setQuery(selectedShip.mmsi);
-    setMmsi(selectedShip.mmsi);
     setLat(selectedShip.lat.toFixed(4));
     setLon(selectedShip.lon.toFixed(4));
   }, [selectedShip]);
-
-  const seq = useSequenceLatest();
-
-  const modelContext: ModelContext | null = useMemo(() => {
-    if (!seq.byMmsi.size) return null;
-    const targetMmsi = selectedShip?.mmsi ?? mmsi ?? null;
-    const flagged: { mmsi: string; lat: number; lon: number }[] = [];
-    if (selectedShip) {
-      for (const [m, v] of seq.byMmsi) {
-        if (m === selectedShip.mmsi) continue;
-        if (v.model_risk === "safe") continue;
-        flagged.push({
-          mmsi: m,
-          lat: 0,
-          lon: 0,
-        });
-      }
-    }
-    const nearbyMmsis = flagged.slice(0, 5).map((f) => f.mmsi);
-    return buildModelContext(
-      targetMmsi,
-      seq.byMmsi,
-      seq.reportNarration,
-      seq.generatedAt,
-      seq.source,
-      nearbyMmsis,
-    );
-  }, [seq.byMmsi, seq.reportNarration, seq.generatedAt, seq.source, selectedShip, mmsi]);
 
   const mutation = useMutation<AgentRunResponse, Error, void>({
     mutationFn: async () => {
@@ -105,16 +75,14 @@ export function AgentsPanel({ selectedShip, className }: Props) {
         if (tab === "gfw") {
           const q = query || selectedShip?.mmsi || "";
           if (!q) throw new Error("Query (MMSI/IMO/name) required");
-          return await agentApi.gfw(q, 365, modelContext);
+          return await agentApi.gfw(q);
         }
         const la = parseFloat(lat);
         const lo = parseFloat(lon);
         if (!Number.isFinite(la) || !Number.isFinite(lo)) {
           throw new Error("Latitude and longitude required");
         }
-        if (tab === "vessel") return await agentApi.vessel(la, lo, 50, modelContext);
-        if (tab === "law") return await agentApi.law(la, lo, modelContext);
-        return await agentApi.complete(la, lo, mmsi || undefined, 50, modelContext);
+        return await agentApi.complete(la, lo, portCountryCode || undefined);
       } finally {
         setElapsed((performance.now() - start) / 1000);
       }
@@ -175,6 +143,21 @@ export function AgentsPanel({ selectedShip, className }: Props) {
               />
             </Field>
           ) : (
+            <>
+            {onRequestGlobePick && (
+              <button
+                onClick={handlePlacePin}
+                disabled={awaitingPin}
+                className={`flex w-full items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-medium ring-1 transition ${
+                  awaitingPin
+                    ? "animate-pulse bg-yellow-400/20 text-yellow-300 ring-yellow-400/50"
+                    : "bg-ink-900 text-slate2-300 ring-ink-700 hover:bg-ink-800 hover:text-slate2-100"
+                }`}
+              >
+                <MapPin size={11} />
+                {awaitingPin ? "Click globe to place pin…" : "Place pin on globe"}
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Field label="Latitude">
                 <input
@@ -193,19 +176,19 @@ export function AgentsPanel({ selectedShip, className }: Props) {
                 />
               </Field>
               {tab === "complete" && (
-                <Field label="MMSI (optional)">
+                <Field label="Port Country Code">
                   <input
-                    value={mmsi}
-                    onChange={(e) => setMmsi(e.target.value)}
-                    placeholder="412345678"
+                    value={portCountryCode}
+                    onChange={(e) => setPortCountryCode(e.target.value.toUpperCase())}
+                    placeholder="ECU"
+                    maxLength={3}
                     className="w-full rounded border border-ink-800 bg-ink-900 px-2 py-1 font-mono text-[11px] text-slate2-200 focus:border-accent-safe focus:outline-none"
                   />
                 </Field>
               )}
             </div>
+            </>
           )}
-
-          <ModelContextPreview ctx={modelContext} ready={seq.ready} training={seq.isTraining} />
 
           <button
             onClick={() => mutation.mutate()}
@@ -231,27 +214,11 @@ export function AgentsPanel({ selectedShip, className }: Props) {
           {mutation.data && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-[10px] text-slate2-400">
-                <span className="font-mono">
-                  {String(
-                    (mutation.data as { agent?: string; status?: string }).agent ??
-                      mutation.data.status ??
-                      "agent",
-                  )}
-                </span>
+                <span className="font-mono">agent: {mutation.data.agent}</span>
                 {elapsed !== null && <span>{elapsed.toFixed(1)} s</span>}
               </div>
-              {modelContext?.selected && (
-                <p className="rounded border border-ink-800 bg-ink-950 p-2 text-[10px] text-slate2-400">
-                  <span className="text-slate2-300">Context attached:</span>{" "}
-                  MMSI {modelContext.selected.mmsi} →{" "}
-                  <span className="font-semibold uppercase">
-                    {modelContext.selected.model_risk.replace("_", " ")}
-                  </span>
-                  .
-                </p>
-              )}
               <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded border border-ink-800 bg-ink-900 p-2 font-mono text-[11px] leading-snug text-slate2-200">
-                {pickAgentText(mutation.data)}
+                {coerceOutput(mutation.data)}
               </pre>
             </div>
           )}
@@ -269,72 +236,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </span>
       {children}
     </label>
-  );
-}
-
-function ModelContextPreview({
-  ctx,
-  ready,
-  training,
-}: {
-  ctx: ModelContext | null;
-  ready: boolean;
-  training: boolean;
-}) {
-  if (!ctx) {
-    return (
-      <div className="rounded border border-dashed border-ink-800 bg-ink-950 p-2 text-[10px] text-slate2-400">
-        <div className="flex items-center gap-1.5">
-          <Brain size={12} className="text-slate2-500" />
-          <span className="font-semibold uppercase tracking-wider">Model context</span>
-        </div>
-        <p className="mt-1">
-          {training
-            ? "Training RNN+BiLSTM on canonical 300 vessels…"
-            : ready
-              ? "No per-MMSI signal for this selection."
-              : "Sequence model not yet ready — auto-training in background."}
-        </p>
-      </div>
-    );
-  }
-
-  const { selected, nearby } = ctx;
-  return (
-    <div className="rounded border border-ink-800 bg-ink-950 p-2 text-[10px] text-slate2-300">
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-slate2-200">
-          <Brain size={12} className="text-accent-safe" />
-          Model context attached
-        </span>
-        {ctx.source && (
-          <span className="font-mono text-slate2-500">{ctx.source}</span>
-        )}
-      </div>
-      {selected && (
-        <p className="mt-1 leading-snug">
-          MMSI <span className="font-mono">{selected.mmsi}</span> →{" "}
-          <span className="font-semibold uppercase">
-            {selected.model_risk.replace("_", " ")}
-          </span>{" "}
-          (mean P {Math.round(selected.mean_confidence * 100)}%
-          {selected.alias_mmsi
-            ? `, alias ${selected.alias_mmsi} ${Math.round(selected.alias_share * 100)}%`
-            : ""}
-          ).
-        </p>
-      )}
-      {selected?.narration && (
-        <p className="mt-1 italic text-slate2-400">{selected.narration}</p>
-      )}
-      {nearby.length > 0 && (
-        <p className="mt-1 text-slate2-400">
-          + {nearby.length} nearby flagged:{" "}
-          {nearby
-            .map((n) => `${n.mmsi} (${n.model_risk.replace("_", " ")})`)
-            .join(", ")}
-        </p>
-      )}
-    </div>
   );
 }

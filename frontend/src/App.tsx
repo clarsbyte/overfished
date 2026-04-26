@@ -2,14 +2,18 @@ import type { FeatureCollection } from "geojson";
 import {
   AlertTriangle,
   Bell,
+  Fish,
   Layers3,
   MapPinned,
+  Pencil,
+  PlayCircle,
   Search,
   Ship as ShipIcon,
+  User,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { OverfishedSidebar } from "@/components/OverfishedSidebar";
+import { AquaWatchSidebar } from "@/components/AquaWatchSidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LiquidGlass } from "@/components/LiquidGlass";
 import { MapView, type MapHandle } from "@/components/MapView";
@@ -26,7 +30,7 @@ import type { Ship } from "@/types/ship";
 
 const MAP_RENDERER_KEY = "ui:map-renderer";
 const LAYER_PLASTIC_KEY = "ui:layer-plastic";
-type BottomDockTab = "vessels" | "incidents" | "zones" | "layers";
+type BottomDockTab = "vessels" | "incidents" | "zones" | "layers" | "animals";
 export type NavView = "ops" | "overview" | "incidents" | "vessels" | "analytics" | "reports" | "settings";
 
 
@@ -43,6 +47,24 @@ export default function App() {
   const [documents, setDocuments] = useState<DocumentArtifact[]>([]);
   const [portCall, setPortCall] = useState<{ endLat: number; endLng: number } | null>(null);
   const [demoError] = useState<string | null>(null);
+
+  const [agentPin, setAgentPin] = useState<{ lat: number; lng: number } | null>(null);
+  const agentPickCbRef = useRef<((lat: number, lng: number) => void) | null>(null);
+  const [isPicking, setIsPicking] = useState(false);
+  const [showSharkHeatmap, setShowSharkHeatmap] = useState(false);
+
+  const handleRequestGlobePick = useCallback((cb: (lat: number, lng: number) => void) => {
+    agentPickCbRef.current = cb;
+    setIsPicking(true);
+  }, []);
+
+  const handleGlobeClick = useCallback((lat: number, lng: number) => {
+    if (!agentPickCbRef.current) return;
+    agentPickCbRef.current(lat, lng);
+    agentPickCbRef.current = null;
+    setAgentPin({ lat, lng });
+    setIsPicking(false);
+  }, []);
 
   const [renderer, setRenderer] = useState<"globe" | "mapbox">(() => {
     if (typeof window === "undefined") return "globe";
@@ -119,7 +141,7 @@ export default function App() {
         return (
           <ReportsView
             documents={documents}
-            onPreview={() => { }}
+            onPreview={() => {}}
             onSetDocuments={setDocuments}
             onPortCallReady={(call) => setPortCall({ endLat: call.endLat, endLng: call.endLng })}
             selectedVessel={selectedVessel}
@@ -129,8 +151,8 @@ export default function App() {
         return (
           <SettingsView
             drawMode="idle"
-            onStartDrawing={() => { }}
-            onResetDrawing={() => { }}
+            onStartDrawing={() => {}}
+            onResetDrawing={() => {}}
             vertexCount={0}
           />
         );
@@ -142,9 +164,9 @@ export default function App() {
             activeRegionName={activeRegionName}
             onSelectVessel={handleSelectVessel}
             onSelectRegion={setActiveRegionName}
-            onRunDemo={() => { }}
-            onNotifyPort={() => { }}
-            onPreview={() => { }}
+            onRunDemo={() => {}}
+            onNotifyPort={() => {}}
+            onPreview={() => {}}
             runDemoPending={false}
             notifyPortPending={false}
             demoRunning={false}
@@ -153,6 +175,7 @@ export default function App() {
             bySource={bySource}
             selectedShip={selected}
             onSpeciesHighlightChange={handleSpeciesHighlightChange}
+            onRequestGlobePick={handleRequestGlobePick}
           />
         );
     }
@@ -162,8 +185,8 @@ export default function App() {
     <div className="space-canvas flex h-screen w-screen overflow-hidden text-slate2-200">
 
       {/* LEFT: Navigation sidebar */}
-      <div className="z-20 m-3 mr-0 flex-shrink-0">
-        <OverfishedSidebar
+      <div className="z-20 m-3 mr-0 flex-shrink-0 h-[calc(100vh-1.5rem)] flex items-center">
+        <AquaWatchSidebar
           activeView={activeView}
           onNavigate={setActiveView}
           totalVessels={ships.length}
@@ -184,49 +207,74 @@ export default function App() {
             onSelect={handleSelect}
             speciesOverlay={speciesOverlay}
             showPlastic={showPlastic}
+            onGlobeClick={handleGlobeClick}
+            pinCoord={agentPin}
+            isPicking={isPicking}
+            showSharkHeatmap={showSharkHeatmap}
           />
         </div>
+
+        {isPicking && (
+          <div className="pointer-events-none absolute inset-x-0 top-20 z-40 flex justify-center">
+            <div className="glass-surface glass-shell flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-yellow-300 ring-1 ring-yellow-400/40">
+              <span className="animate-pulse">⊕</span>
+              Click the globe to place your agent pin
+            </div>
+          </div>
+        )}
 
         <div className="starfield-static z-10 opacity-45 pointer-events-none" aria-hidden />
 
         {/* Top bar: search + date/time + user */}
         <div className="pointer-events-none absolute top-3 inset-x-3 z-30 flex items-center gap-2">
           <div className="flex-1 pointer-events-auto">
-            <LiquidGlass className="rounded-full" chromaticAberration={1.5} depth={6}>
-              <div className="flex items-center gap-2.5 px-4 py-2.5">
-                <Search size={14} className="text-slate2-400 flex-shrink-0" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search vessels, incidents, zones..."
-                  className="bg-transparent text-sm text-slate2-200 placeholder:text-slate2-400 outline-none flex-1 min-w-0"
-                />
-              </div>
-            </LiquidGlass>
+            <div className="glass-surface glass-shell flex items-center gap-2.5 px-4 py-2.5">
+              <Search size={14} className="text-slate2-400 flex-shrink-0" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search vessels, incidents, zones..."
+                className="bg-transparent text-sm text-slate2-200 placeholder:text-slate2-400 outline-none flex-1 min-w-0"
+              />
+            </div>
           </div>
-          <div className="pointer-events-auto flex-shrink-0">
-            <LiquidGlass className="rounded-full" chromaticAberration={1.5} depth={6}>
-              <div className="flex items-center gap-3 px-4 py-2.5">
-                <div className="text-right">
-                  <div className="text-[10px] font-mono text-slate2-400 leading-none">{dateStr}</div>
-                  <div className="text-[11px] font-mono font-semibold text-slate2-200 leading-none mt-0.5">{timeStr}</div>
-                </div>
-                <div className="w-px h-4 bg-white/10" />
-                <div className="flex items-center gap-1.5 px-1 select-none">
-                  <div className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                  </div>
-                  <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">Agent Active</span>
-                </div>
-              </div>
-            </LiquidGlass>
+          <div className="glass-surface glass-shell pointer-events-auto flex items-center gap-3 px-4 py-2.5 flex-shrink-0">
+            <div className="text-right">
+              <div className="text-[10px] font-mono text-slate2-400 leading-none">{dateStr}</div>
+              <div className="text-[11px] font-mono font-semibold text-slate2-200 leading-none mt-0.5">{timeStr}</div>
+            </div>
+            <div className="w-px h-4 bg-white/10" />
+            <button type="button" className="text-slate2-400 hover:text-slate2-200 transition-colors">
+              <Bell size={14} />
+            </button>
+            <button type="button" className="w-6 h-6 rounded-full bg-accent-safe/20 border border-accent-safe/30 flex items-center justify-center">
+              <User size={11} className="text-accent-safe" />
+            </button>
           </div>
+        </div>
+
+        {/* Action buttons: Define Region + Run Demo Flow */}
+        <div className="pointer-events-none absolute top-16 right-3 z-30 flex items-center gap-2">
+          <button
+            type="button"
+            className="glass-surface glass-shell pointer-events-auto flex items-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate2-300 hover:text-slate2-100 transition-colors"
+          >
+            <Pencil size={12} />
+            Define Region
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView("reports")}
+            className="glass-surface glass-shell pointer-events-auto flex items-center gap-2 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-red-300 border-red-500/25 bg-red-500/10 hover:bg-red-500/20 transition-colors"
+          >
+            <PlayCircle size={12} />
+            Run Demo Flow
+          </button>
         </div>
 
         {/* Vessel detail floating card — bottom-left, above dock */}
         {selected && (
-          <div className="pointer-events-none absolute bottom-20 left-3 z-20 w-[380px]">
+          <div className="pointer-events-none absolute bottom-20 left-3 z-20 w-[320px]">
             <div className="pointer-events-auto">
               <ErrorBoundary label="Vessel detail">
                 <VesselDetailPanel ship={selected} onClose={() => setSelected(null)} />
@@ -237,8 +285,34 @@ export default function App() {
 
         {/* Bottom dock */}
         <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2">
+          <div className="glass-surface glass-shell pointer-events-auto relative flex items-center gap-1 p-2.5">
+            {(
+              [
+                { id: "vessels",   label: "Vessels",   icon: ShipIcon     },
+                { id: "incidents", label: "Incidents", icon: AlertTriangle },
+                { id: "zones",     label: "Zones",     icon: MapPinned    },
+                { id: "animals",   label: "Animals",   icon: Fish         },
+                { id: "layers",    label: "Layers",    icon: Layers3      },
+              ] as const
+            ).map(({ id, label, icon: Icon }) => {
+              const active = activeDockTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveDockTab(id)}
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-[0.02em] transition ${
+                    active ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip hover:text-slate2-100"
+                  }`}
+                >
+                  <Icon size={16} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
           {activeDockTab === "layers" && (
-            <div className="pointer-events-auto mb-2 flex justify-center">
+            <div className="pointer-events-auto absolute -top-14 left-1/2 mb-2 flex -translate-x-1/2 justify-center">
               <LiquidGlass className="rounded-full" chromaticAberration={1.5} depth={6}>
                 <div className="flex items-center gap-1 p-1.5 text-[11px] uppercase tracking-wide text-slate2-200">
                   <button
@@ -275,34 +349,18 @@ export default function App() {
               </LiquidGlass>
             </div>
           )}
-          <div className="pointer-events-auto">
-            <LiquidGlass className="rounded-full" chromaticAberration={1.5} depth={6}>
-              <div className="flex items-center gap-1 p-2.5">
-                {(
-                  [
-                    { id: "vessels", label: "Vessels", icon: ShipIcon },
-                    { id: "incidents", label: "Incidents", icon: AlertTriangle },
-                    { id: "zones", label: "Zones", icon: MapPinned },
-                    { id: "layers", label: "Layers", icon: Layers3 },
-                  ] as const
-                ).map(({ id, label, icon: Icon }) => {
-                  const active = activeDockTab === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setActiveDockTab(id)}
-                      className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-[0.02em] transition ${active ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip hover:text-slate2-100"
-                        }`}
-                    >
-                      <Icon size={16} />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </LiquidGlass>
-          </div>
+          {activeDockTab === "animals" && (
+            <div className="glass-surface glass-panel pointer-events-auto absolute -top-14 left-1/2 flex -translate-x-1/2 items-center gap-1 p-1.5 text-[11px] uppercase tracking-wide text-slate2-200">
+              <button
+                type="button"
+                onClick={() => setShowSharkHeatmap(v => !v)}
+                className={`flex items-center gap-1.5 rounded px-2 py-1 transition ${showSharkHeatmap ? "glass-chip text-accent-safe" : "text-slate2-300 hover:glass-chip"}`}
+              >
+                <Fish size={12} />
+                Shark
+              </button>
+            </div>
+          )}
         </div>
       </main>
 

@@ -64,11 +64,51 @@ function RiskBadge({ risk }: { risk?: Risk }) {
   );
 }
 
-interface ImgState { src: string | null; stage: "local" | "remote" | "missing"; }
-function resolveImage(local?: string, remote?: string): ImgState {
+interface ImgState { src: string | null; stage: "local" | "remote" | "fallback" | "missing"; }
+
+// Curated whole-vessel photos from Wikimedia Commons, grouped by gear type.
+// Used as fallbacks when a specific MMSI has no entry in vessel_cards.json
+// (e.g. ambient global-tracks vessels, SAR detections without an image_url).
+const WIKI = (filename: string) =>
+  `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=640`;
+const FALLBACK_BY_TYPE: Record<string, string[]> = {
+  longliners: [
+    WIKI("Longliner Argenova-XXI.jpg"),
+    WIKI("Longliner Janas Ross Sea 6Dec2009.jpg"),
+    WIKI("Long liner in Cook Strait, New Zealand 1988.jpg"),
+  ],
+  trawlers: [
+    WIKI("Two trawlers in Sète.jpg"),
+    WIKI("Fischerboot vor Bodø.jpg"),
+    WIKI("Colby Lee Fishing Vessel Docked in Salmon Harbor Marina.jpg"),
+  ],
+  purse_seiners: [WIKI("Kapal Nelayan Purse Seine 2.jpg")],
+};
+const GENERIC_FALLBACK = WIKI("Two trawlers in Sète.jpg");
+
+function hashMmsi(mmsi: string): number {
+  let h = 0;
+  for (let i = 0; i < mmsi.length; i++) h = (h * 31 + mmsi.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function fallbackImage(mmsi: string | undefined, vesselType?: string | null): string {
+  if (!mmsi) return GENERIC_FALLBACK;
+  const key = (vesselType ?? "").toLowerCase();
+  const pool = FALLBACK_BY_TYPE[key];
+  if (pool && pool.length) return pool[hashMmsi(mmsi) % pool.length];
+  return GENERIC_FALLBACK;
+}
+
+function resolveImage(
+  local: string | undefined,
+  remote: string | undefined,
+  mmsi: string | undefined,
+  vesselType: string | null | undefined,
+): ImgState {
   if (local) return { src: local, stage: "local" };
   if (remote) return { src: remote, stage: "remote" };
-  return { src: null, stage: "missing" };
+  return { src: fallbackImage(mmsi, vesselType), stage: "fallback" };
 }
 
 type Tab = "overview" | "events" | "risk";
@@ -348,18 +388,21 @@ export function VesselDetailPanel({ ship, onClose, onRequestAgent: _onRequestAge
   const localUrl = card?.image_path;
   const remoteUrl = card?.image_source_url;
 
-  const [img, setImg] = useState<ImgState>(() => resolveImage(localUrl, remoteUrl));
+  const vesselTypeForFallback = card?.vessel_type ?? ship?.vesselType;
+  const [img, setImg] = useState<ImgState>(() =>
+    resolveImage(localUrl, remoteUrl, ship?.mmsi, vesselTypeForFallback),
+  );
   const lastKeyRef = useRef<string>("");
   const [tab, setTab] = useState<Tab>("overview");
 
   useEffect(() => {
     if (!ship) return;
-    const key = `${ship.mmsi}|${localUrl ?? ""}|${remoteUrl ?? ""}`;
+    const key = `${ship.mmsi}|${localUrl ?? ""}|${remoteUrl ?? ""}|${vesselTypeForFallback ?? ""}`;
     if (key === lastKeyRef.current) return;
     lastKeyRef.current = key;
-    setImg(resolveImage(localUrl, remoteUrl));
+    setImg(resolveImage(localUrl, remoteUrl, ship.mmsi, vesselTypeForFallback));
     setTab("overview");
-  }, [ship, localUrl, remoteUrl]);
+  }, [ship, localUrl, remoteUrl, vesselTypeForFallback]);
 
   const vesselQ = useQuery({
     queryKey: ["vessel", ship?.mmsi],
@@ -412,7 +455,10 @@ export function VesselDetailPanel({ ship, onClose, onRequestAgent: _onRequestAge
   const handleImgError = () => {
     setImg((prev) => {
       if (prev.stage === "local" && remoteUrl) return { src: remoteUrl, stage: "remote" };
-      return { src: null, stage: "missing" };
+      // remote / fallback both failed — final fallback is the gear-type pool.
+      // If we're already on a fallback, mark missing so we don't loop.
+      if (prev.stage === "fallback") return { src: null, stage: "missing" };
+      return { src: fallbackImage(ship?.mmsi, vesselType), stage: "fallback" };
     });
   };
 
